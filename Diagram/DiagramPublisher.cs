@@ -12,6 +12,7 @@ public static class DiagramPublisher
     public const string DiagramName = "diagram.json";
     public const string MailName = "to-agent.json";
     public const string RecipeName = "project.json";
+    public const string ProposalName = "proposal.json";
 
     public static bool Publish(string projectFolder, DiagramDocument document)
     {
@@ -29,6 +30,9 @@ public static class DiagramPublisher
 
     public static string DiagramPath(string projectFolder) =>
         Path.Combine(projectFolder, FolderName, DiagramName);
+
+    public static string ProposalPath(string projectFolder) =>
+        Path.Combine(projectFolder, FolderName, ProposalName);
 
     public static void WriteRecipe(string projectFolder, string testCommand, string scanCommand, string mutateCommand)
     {
@@ -55,6 +59,22 @@ public static class DiagramPublisher
 
     public static void PostRefresh(string projectFolder, string testCommand, string scanCommand) =>
         Post(projectFolder, new MailItem { Op = "refresh", Test = testCommand, Scan = scanCommand });
+
+    public static void PostRefreshNode(string projectFolder, DiagramNode node, string testCommand, string scanCommand) =>
+        Post(projectFolder, new MailItem
+        {
+            Op = "refresh-node",
+            NodeId = node.Id,
+            Name = node.Name,
+            Kind = node.Kind,
+            File = node.File,
+            Line = node.Line,
+            Test = testCommand,
+            Scan = scanCommand
+        });
+
+    public static void PostProposal(string projectFolder) =>
+        Post(projectFolder, new MailItem { Op = "proposal", Path = FolderName + "/" + ProposalName });
 
     public static void PostContext(string projectFolder, DiagramNode node) =>
         Post(projectFolder, new MailItem

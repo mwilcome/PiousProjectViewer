@@ -19,6 +19,8 @@ public static class GrokLaunch
         "Do not edit .pious/diagram.json by hand and do not invent boxes. " +
         "When a line says you have mail, read .pious/to-agent.json, handle the oldest command, and remove it from the queue. " +
         "refresh means run the test command in the mail, then run the scan command in the mail, even if those files already exist. " +
+        "refresh-node is the same, and the mail names the one box to pay attention to. " +
+        "proposal means write .pious/proposal.json in the same shape as diagram.json, regrouping real names only. Do not edit diagram.json. " +
         "If the test command fails, still run the scan command, then say that the tests failed. " +
         "diagram-updated means the picture changed. Read .pious/diagram.json and wait. " +
         "Opening a file or moving around the diagram is not mail. " +

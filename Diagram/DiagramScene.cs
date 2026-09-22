@@ -47,8 +47,9 @@ public sealed record Scene(
 
 public static class DiagramScene
 {
-    public const double BoxWidth = 168;
+    public const double BoxWidth = 220;
     public const double BoxHeight = 64;
+    const double LineHeight = 15;
 
     const double GapX = 46;
     const double GapY = 52;
@@ -84,14 +85,16 @@ public static class DiagramScene
             for (var index = 0; index < row.Count; index += 4)
             {
                 var slice = row.Skip(index).Take(4).ToList();
+                var heights = slice.Select(node => HeightFor(node)).ToList();
+                var rowHeight = heights.Max();
                 var rowWidth = slice.Count * BoxWidth + Math.Max(0, slice.Count - 1) * GapX;
                 var x = PadX + (innerWidth - rowWidth) / 2;
-                foreach (var node in slice)
+                for (var item = 0; item < slice.Count; item++)
                 {
-                    boxes[node.Id] = new Box(x, y, BoxWidth, BoxHeight);
+                    boxes[slice[item].Id] = new Box(x, y, BoxWidth, heights[item]);
                     x += BoxWidth + GapX;
                 }
-                y += BoxHeight + GapY;
+                y += rowHeight + GapY;
             }
         }
 
@@ -103,6 +106,39 @@ public static class DiagramScene
             ? document.Title
             : document.Nodes.First(node => node.Id == parent).Name;
         return new Scene(frame, title, boxes, Routes(document, parent, boxes));
+    }
+
+    public static double HeightFor(DiagramNode node)
+    {
+        if (node.Kind == "foreign")
+            return BoxHeight;
+        var lines = LinesIn(node).Count;
+        return lines == 0 ? BoxHeight : 50 + lines * LineHeight + 10;
+    }
+
+    public static IReadOnlyList<string> LinesIn(DiagramNode node)
+    {
+        var methods = (node.Members ?? [])
+            .Where(member => member.Kind != "field")
+            .OrderByDescending(member => member.IsPublic)
+            .ThenByDescending(member => member.Cc)
+            .ThenBy(member => member.Name, StringComparer.Ordinal)
+            .ToList();
+        var lines = methods.Take(12).Select(ShortMember).ToList();
+        if (methods.Count > lines.Count)
+            lines.Add("+ " + (methods.Count - lines.Count) + " more");
+        return lines;
+    }
+
+    public static string ShortMember(DiagramMember member)
+    {
+        var name = member.Name;
+        var paren = name.IndexOf('(');
+        if (paren > 0)
+            name = name[..paren];
+        if (name.Length > 24)
+            name = name[..22] + "...";
+        return (member.IsPublic ? "+ " : "- ") + name;
     }
 
     static void PlaceForeign(List<DiagramNode> foreign, Box frame, Dictionary<string, Box> boxes)

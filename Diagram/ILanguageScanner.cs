@@ -16,7 +16,7 @@ public interface ILanguageScanner
 
 public static class Scanners
 {
-    static readonly ILanguageScanner[] Known = [new CSharpScanner()];
+    static readonly ILanguageScanner[] Known = [new CSharpScanner(), new AngularScanner(), new JavaScanner()];
 
     public static IReadOnlyList<ILanguageScanner> All => Known;
 

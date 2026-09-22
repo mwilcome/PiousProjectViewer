@@ -79,8 +79,8 @@
                 BorderBrush="#2A2826"
                 BorderThickness="1,0,0,0"
                 Padding="18,20">
-            <ScrollViewer>
-                <StackPanel Spacing="8">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Top" Spacing="8">
                     <Button Classes="side" Content="Open project" Click="OnOpen" />
                     <TextBlock x:Name="ProjectText"
                                FontSize="12"
@@ -92,6 +92,12 @@
                             Content="Refresh diagram"
                             IsEnabled="False"
                             Click="OnAskGrok"
+                            ToolTip.Tip="Start the companion first." />
+                    <Button x:Name="ProposalButton"
+                            Classes="side"
+                            Content="Ask for a proposal"
+                            IsEnabled="False"
+                            Click="OnProposal"
                             ToolTip.Tip="Start the companion first." />
                     <TextBlock Classes="section" Text="Language" />
                     <ComboBox x:Name="LanguageBox"
@@ -150,8 +156,14 @@
                                FontSize="12"
                                Foreground="#C4BEB4"
                                TextWrapping="Wrap" />
+                    <TextBlock x:Name="ListHeading"
+                               Classes="section"
+                               Text="On this level" />
                 </StackPanel>
-            </ScrollViewer>
+                <ScrollViewer>
+                    <StackPanel x:Name="MemberRows" Spacing="2" />
+                </ScrollViewer>
+            </DockPanel>
         </Border>
     </Grid>
 </Window>

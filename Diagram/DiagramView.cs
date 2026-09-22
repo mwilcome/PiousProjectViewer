@@ -42,6 +42,7 @@ public sealed class DiagramView : Control
     public event EventHandler? ViewChanged;
     public event EventHandler? DepthChanged;
     public event EventHandler<DiagramNode>? OpenCard;
+    public event EventHandler<DiagramNode>? RefreshNode;
 
     public PaintMode Mode
     {
@@ -172,6 +173,17 @@ public sealed class DiagramView : Control
         Focus();
         var hit = Hit(e.GetPosition(this));
         _selectedId = hit?.Id;
+        var right = e.GetCurrentPoint(this).Properties.IsRightButtonPressed;
+        if (right && hit is not null)
+        {
+            _selectedId = hit.Id;
+            _dragging = false;
+            ShowRefreshMenu(hit);
+            InvalidateVisual();
+            ViewChanged?.Invoke(this, EventArgs.Empty);
+            e.Handled = true;
+            return;
+        }
         _dragging = e.ClickCount < 2;
         _dragStart = e.GetPosition(this);
         _panAtDrag = _pan;
@@ -309,9 +321,28 @@ public sealed class DiagramView : Control
                 context.DrawRectangle(null, ringPen, new RoundedRect(ring, 16));
         }
 
-        var caption = Caption(node);
-        DrawCentered(context, node.Name, rect, 16, Ink, -9);
-        DrawCentered(context, caption, rect, 12, selected || hot ? Ink : Quiet, 11);
+        if (node.Kind == "foreign")
+        {
+            DrawCentered(context, node.Name, rect, 15, Ink, -8);
+            DrawCentered(context, Caption(node), rect, 11, Quiet, 10);
+            return;
+        }
+        DrawText(context, node.Name, 15, Ink, new Point(rect.X + 12, rect.Y + 8));
+        DrawText(context, Caption(node), 11, selected || hot ? Ink : Quiet, new Point(rect.X + 12, rect.Y + 28));
+        var lineY = rect.Y + 48;
+        foreach (var line in DiagramScene.LinesIn(node))
+        {
+            DrawText(context, line, 12, Quiet, new Point(rect.X + 12, lineY));
+            lineY += 15;
+        }
+    }
+
+    void ShowRefreshMenu(DiagramNode node)
+    {
+        var item = new MenuItem { Header = "Refresh this box" };
+        item.Click += (_, _) => RefreshNode?.Invoke(this, node);
+        var menu = new ContextMenu { Items = { item } };
+        menu.Open(this);
     }
 
     void DrawEdge(DrawingContext context, RoutedEdge edge)
@@ -410,7 +441,18 @@ public sealed class DiagramView : Control
 
     static Rect ToRect(Box box) => new(box.X, box.Y, box.Width, box.Height);
 
-    DiagramNode? Selected() => _selectedId is null ? null : Node(_selectedId);
+    public DiagramNode? SelectedNode => _selectedId is null ? null : Node(_selectedId);
+
+    public string? CurrentParentId => _depth.Count == 0 ? null : _depth.Peek();
+
+    public void Select(string id)
+    {
+        _selectedId = id;
+        InvalidateVisual();
+        ViewChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    DiagramNode? Selected() => SelectedNode;
 
     DiagramNode? Node(string id) => _document?.Nodes.FirstOrDefault(node => node.Id == id);
 

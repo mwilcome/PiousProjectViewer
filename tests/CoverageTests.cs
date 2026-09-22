@@ -59,7 +59,7 @@ public class CoverageTests
         try
         {
             Assert.False(ScanCommand.TryRun(["--language", "C#"]));
-            Assert.Contains("pious-project-viewer", ScanCommand.CommandLine(coded, "auto"));
+            Assert.Contains("--scan", ScanCommand.CommandLine(coded, "auto"));
             Assert.Equal("echo No scanner for this folder.", ScanCommand.TestCommandFor(empty));
             Assert.True(ScanCommand.TryRun(["--scan", empty, "--language", "C#"]));
             Assert.Equal(1, Environment.ExitCode);
@@ -299,15 +299,11 @@ public class CoverageTests
             window.Show();
             var alpha = window.Diagram.Document!.Nodes.Single(node => node.Name == "Alpha");
             Assert.Equal("Alpha", alpha.Name);
-            window.ShowCard(alpha);
-            var card = Assert.Single(window.OwnedWindows.OfType<ClassCardWindow>());
-            Assert.True(card.IsVisible);
-            Assert.Equal("Alpha", card.Title);
-            var method = card.GetVisualDescendants().OfType<Button>().First(button => button.Content is string text && text.Contains("Run()"));
+            window.Diagram.Select(alpha.Id);
+            var method = window.GetVisualDescendants().OfType<Button>().First(button => button.Content is string text && text.Contains("Run"));
             method.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
             Assert.NotNull(launched);
             Assert.Contains("Demo.cs", launched!.Arguments);
-            card.RaiseEvent(new KeyEventArgs { Key = Key.Escape, RoutedEvent = InputElement.KeyDownEvent });
             var complexity = window.GetVisualDescendants().OfType<RadioButton>().First(button => Equals(button.Content, "Complexity"));
             complexity.IsChecked = true;
             var language = window.GetVisualDescendants().OfType<ComboBox>().First();

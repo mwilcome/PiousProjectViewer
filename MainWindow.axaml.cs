@@ -5,6 +5,8 @@ using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Layout;
+using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using PiousProjectViewer.Diagram;
@@ -15,8 +17,9 @@ public partial class MainWindow : Window
 {
     readonly ProjectPulse _pulse = new();
     Session _session = new();
-    ClassCardWindow? _cardWindow;
     bool _companionRunning;
+    bool _showingProposal;
+    ClassCardWindow? _cardWindow;
     bool _ready;
 
     internal Session SessionState => _session;
@@ -28,8 +31,8 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         Diagram.ViewChanged += (_, _) => RefreshInspector();
-        Diagram.DepthChanged += (_, _) => _cardWindow?.Close();
         Diagram.OpenCard += (_, node) => ShowCard(node);
+        Diagram.RefreshNode += (_, node) => RefreshOne(node);
         LanguageBox.ItemsSource = new[] { "Auto" }.Concat(Scanners.All.Select(scanner => scanner.Name)).ToList();
         AgentBox.ItemsSource = Agents.Names.ToList();
         _session = SessionStore.Load();
@@ -64,12 +67,6 @@ public partial class MainWindow : Window
     {
         if (e.Key != Key.Escape)
             return;
-        if (_cardWindow is { IsVisible: true })
-        {
-            _cardWindow.Close();
-            e.Handled = true;
-            return;
-        }
         Diagram.GoBack();
         e.Handled = true;
     }
@@ -183,10 +180,17 @@ public partial class MainWindow : Window
             LegendText.Text = "No coverage report yet. Slate means not scored, not a failure.";
         PathText.Text = Diagram.PathText;
         DetailText.Text = Diagram.DetailText;
+        FillList();
         BackButton.IsVisible = Diagram.CanGoBack;
+        var proposal = !string.IsNullOrWhiteSpace(_session.Folder) && File.Exists(DiagramPublisher.ProposalPath(_session.Folder));
         var live = _companionRunning && Companion.IsLive;
         var folderOpen = !string.IsNullOrWhiteSpace(_session.Folder);
         RefreshButton.IsEnabled = live && folderOpen;
+        ProposalButton.IsEnabled = live && folderOpen;
+        ProposalButton.Content = !proposal ? "Ask for a proposal" : _showingProposal ? "Show real diagram" : "Show proposal";
+        ToolTip.SetTip(ProposalButton, live
+            ? "Asks the companion for a what-if picture."
+            : "Start the companion first.");
         StartCompanionButton.Content = live ? "Restart companion" : "Start companion";
         ToolTip.SetTip(RefreshButton, live
             ? "Runs the tests, then redraws the diagram."
@@ -216,7 +220,7 @@ public partial class MainWindow : Window
     internal void ReloadDiagram()
     {
         var folder = _session.Folder;
-        if (string.IsNullOrWhiteSpace(folder))
+        if (string.IsNullOrWhiteSpace(folder) || _showingProposal)
             return;
         var path = DiagramPublisher.DiagramPath(folder);
         if (!File.Exists(path))
@@ -231,7 +235,7 @@ public partial class MainWindow : Window
         }
     }
 
-    internal void ShowCard(DiagramNode node)
+    void ShowCard(DiagramNode node)
     {
         if (_cardWindow is null)
         {
@@ -240,6 +244,124 @@ public partial class MainWindow : Window
         }
         _cardWindow.ShowNode(this, Diagram, node);
     }
+
+    void RefreshOne(DiagramNode node)
+    {
+        if (string.IsNullOrWhiteSpace(_session.Folder))
+            return;
+        if (!_companionRunning || !Companion.IsLive)
+        {
+            CompanionStatus.Text = "Start the companion first. Nothing was sent.";
+            return;
+        }
+        DiagramPublisher.PostRefreshNode(
+            _session.Folder,
+            node,
+            ScanCommand.TestCommandFor(_session.Folder),
+            ScanCommand.CommandLine(_session.Folder, _session.Language));
+        _ = Companion.SendInputAsync(GrokLaunch.WakeLine);
+        CompanionStatus.Text = "Asked the companion to refresh " + node.Name + ".";
+    }
+
+    void OnProposal(object? sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(_session.Folder))
+            return;
+        var path = DiagramPublisher.ProposalPath(_session.Folder);
+        if (!File.Exists(path))
+        {
+            if (!_companionRunning || !Companion.IsLive)
+            {
+                CompanionStatus.Text = "Start the companion first. Nothing was sent.";
+                return;
+            }
+            DiagramPublisher.PostProposal(_session.Folder);
+            _ = Companion.SendInputAsync(GrokLaunch.WakeLine);
+            CompanionStatus.Text = "Asked the companion for a proposal.";
+            return;
+        }
+        _showingProposal = !_showingProposal;
+        var real = DiagramPublisher.DiagramPath(_session.Folder);
+        Diagram.Document = DiagramLoader.Load(_showingProposal ? path : real);
+        ProposalButton.Content = _showingProposal ? "Show real diagram" : "Show proposal";
+        RefreshInspector();
+    }
+
+    void FillList()
+    {
+        MemberRows.Children.Clear();
+        var document = Diagram.Document;
+        if (document is null)
+            return;
+        var selected = Diagram.SelectedNode;
+        var children = document.Nodes
+            .Where(node => node.Kind != "foreign" && node.Parent == (selected?.Id ?? Diagram.CurrentParentId))
+            .OrderBy(node => node.Name, StringComparer.Ordinal)
+            .ToList();
+        if (selected is null)
+        {
+            ListHeading.Text = "On this level";
+            foreach (var child in children)
+                AddChildRow(child);
+            return;
+        }
+        if (children.Count > 0)
+        {
+            ListHeading.Text = selected.Name;
+            foreach (var child in children)
+                AddChildRow(child);
+        }
+        var members = (selected.Members ?? []).Where(member => member.Kind != "field").ToList();
+        var fields = (selected.Members ?? []).Where(member => member.Kind == "field").ToList();
+        if (members.Count == 0 && fields.Count == 0)
+        {
+            if (children.Count == 0)
+                ListHeading.Text = selected.Name;
+            return;
+        }
+        if (children.Count == 0)
+            ListHeading.Text = selected.Name;
+        foreach (var member in members.OrderByDescending(member => member.Cc).ThenBy(member => member.Name, StringComparer.Ordinal))
+            AddMemberRow(selected, member);
+        foreach (var field in fields.OrderBy(field => field.Line))
+            AddMemberRow(selected, field);
+    }
+
+    void AddChildRow(DiagramNode child)
+    {
+        var score = Diagram.Mode == PaintMode.Crap && child.CrapMu is double mu
+            ? mu.ToString("0.0").PadLeft(6) + "  "
+            : child.WorstCc is int cc ? "cc " + cc.ToString().PadLeft(2) + "  " : "         ";
+        var button = RowButton(score + child.Name);
+        var id = child.Id;
+        button.Click += (_, _) => Diagram.Select(id);
+        MemberRows.Children.Add(button);
+    }
+
+    void AddMemberRow(DiagramNode owner, DiagramMember member)
+    {
+        var button = RowButton(DiagramScene.ShortMember(member));
+        var line = member.Line;
+        button.Click += (_, _) =>
+        {
+            if (owner.File is string file)
+                SourceEditor.Open(file, line);
+        };
+        MemberRows.Children.Add(button);
+    }
+
+    static Button RowButton(string label) => new()
+    {
+        Content = label,
+        HorizontalAlignment = HorizontalAlignment.Stretch,
+        HorizontalContentAlignment = HorizontalAlignment.Left,
+        FontFamily = new FontFamily("Cascadia Mono,Consolas,monospace"),
+        FontSize = 12,
+        Background = Brushes.Transparent,
+        Foreground = new SolidColorBrush(Color.Parse("#F3EFE8")),
+        Padding = new Avalonia.Thickness(4, 3),
+        MinHeight = 0
+    };
 
     async void OnStartAgent(object? sender, RoutedEventArgs e) => await StartCompanionAsync();
 
