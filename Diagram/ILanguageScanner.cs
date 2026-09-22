@@ -10,6 +10,7 @@ public interface ILanguageScanner
     bool SupportsCrap { get; }
     bool CanScan(string folder);
     string TestCommand(string folder);
+    string MutateCommand(string folder);
     DiagramDocument Scan(string folder);
 }
 

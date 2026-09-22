@@ -108,7 +108,7 @@ public partial class MainWindow : Window
         _session.Language = selected == "Auto" ? "auto" : selected;
         SessionStore.Save(_session);
         if (!string.IsNullOrWhiteSpace(_session.Folder))
-            DiagramPublisher.WriteRecipe(_session.Folder, ScanCommand.TestCommandFor(_session.Folder), ScanCommand.CommandLine(_session.Folder, _session.Language));
+            DiagramPublisher.WriteRecipe(_session.Folder, ScanCommand.TestCommandFor(_session.Folder), ScanCommand.CommandLine(_session.Folder, _session.Language), ScanCommand.MutateCommandFor(_session.Folder));
         RefreshInspector();
     }
 
@@ -146,7 +146,7 @@ public partial class MainWindow : Window
             && !string.Equals(previous, folder, StringComparison.OrdinalIgnoreCase);
         _session.Folder = folder;
         SessionStore.Save(_session);
-        DiagramPublisher.WriteRecipe(folder, ScanCommand.TestCommandFor(folder), ScanCommand.CommandLine(folder, _session.Language));
+        DiagramPublisher.WriteRecipe(folder, ScanCommand.TestCommandFor(folder), ScanCommand.CommandLine(folder, _session.Language), ScanCommand.MutateCommandFor(folder));
         _pulse.WatchFile(diagramPath);
         if (restartCompanion)
             _ = StartCompanionAsync();

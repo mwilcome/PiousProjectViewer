@@ -10,6 +10,7 @@ public sealed class DiagramDocument
     public bool SupportsComplexity { get; set; }
     public bool SupportsCrap { get; set; }
     public bool CoverageReady { get; set; }
+    public bool MutationReady { get; set; }
     public List<DiagramNode> Nodes { get; set; } = new();
     public List<DiagramEdge> Edges { get; set; } = new();
 }
@@ -39,6 +40,9 @@ public sealed class DiagramMember
     public double? Crap { get; set; }
     public bool IsPublic { get; set; }
     public string Kind { get; set; } = "method";
+    public int? Killed { get; set; }
+    public int? Survived { get; set; }
+    public int? Uncovered { get; set; }
 }
 
 public sealed class DiagramEdge

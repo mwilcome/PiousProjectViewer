@@ -30,6 +30,13 @@ public sealed class CSharpScanner : ILanguageScanner
     static string DotNetTest(string relativePath) =>
         "dotnet test \"" + relativePath + "\" --collect:\"XPlat Code Coverage\"";
 
+    public string MutateCommand(string folder)
+    {
+        if (FindSolutions(folder).Count == 0 && FindTestProjects(folder).Count == 0)
+            return "echo No test project found.";
+        return "dotnet stryker --reporter json";
+    }
+
     public DiagramDocument Scan(string folder)
     {
         var projects = FindProjects(folder);
@@ -58,6 +65,7 @@ public sealed class CSharpScanner : ILanguageScanner
         foreach (var project in projects)
             Graft(combined, ScanProject(project));
         combined.CoverageReady = combined.Nodes.Any(node => node.CrapMu is not null);
+        combined.MutationReady = combined.Nodes.Any(node => node.Members.Any(member => member.Killed is not null));
         LevelRank.Apply(combined, folder);
         return combined;
     }
@@ -120,6 +128,9 @@ public sealed class CSharpScanner : ILanguageScanner
         var coverage = CoverageReport.Find(root);
         if (coverage is not null)
             ApplyCoverage(types, coverage);
+        var mutation = MutationReport.Find(root);
+        if (mutation is not null)
+            ApplyMutation(types, mutation);
 
         var document = new DiagramDocument
         {
@@ -127,7 +138,8 @@ public sealed class CSharpScanner : ILanguageScanner
             ScannerName = "C#",
             SupportsComplexity = true,
             SupportsCrap = true,
-            CoverageReady = coverage is not null
+            CoverageReady = coverage is not null,
+            MutationReady = mutation is not null
         };
         AddNamespaces(document, types);
         AddTypes(document, types);
@@ -396,6 +408,20 @@ public sealed class CSharpScanner : ILanguageScanner
         }
     }
 
+    static void ApplyMutation(List<TypeFact> types, MutationReport mutation)
+    {
+        foreach (var type in types)
+        {
+            foreach (var method in type.Methods.Where(method => method.Kind != "field"))
+            {
+                var counts = mutation.Counts(type.File, method.StartLine, method.EndLine);
+                method.Killed = counts.Killed;
+                method.Survived = counts.Survived;
+                method.Uncovered = counts.Uncovered;
+            }
+        }
+    }
+
     static void AddNamespaces(DiagramDocument document, List<TypeFact> types)
     {
         var spaces = types.Select(type => type.NamespaceId).Distinct().ToList();
@@ -470,7 +496,10 @@ public sealed class CSharpScanner : ILanguageScanner
                     Coverage = Round1(method.Coverage),
                     Crap = Round1(method.Crap),
                     IsPublic = method.IsPublic,
-                    Kind = method.Kind
+                    Kind = method.Kind,
+                    Killed = method.Killed,
+                    Survived = method.Survived,
+                    Uncovered = method.Uncovered
                 }).ToList()
             });
         }
@@ -532,5 +561,8 @@ public sealed class CSharpScanner : ILanguageScanner
         public string Kind { get; init; } = "method";
         public double? Coverage { get; set; }
         public double? Crap { get; set; }
+        public int? Killed { get; set; }
+        public int? Survived { get; set; }
+        public int? Uncovered { get; set; }
     }
 }

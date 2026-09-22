@@ -30,7 +30,7 @@ public static class DiagramPublisher
     public static string DiagramPath(string projectFolder) =>
         Path.Combine(projectFolder, FolderName, DiagramName);
 
-    public static void WriteRecipe(string projectFolder, string testCommand, string scanCommand)
+    public static void WriteRecipe(string projectFolder, string testCommand, string scanCommand, string mutateCommand)
     {
         var directory = Path.Combine(projectFolder, FolderName);
         Directory.CreateDirectory(directory);
@@ -39,8 +39,9 @@ public static class DiagramPublisher
         {
             test = testCommand,
             scan = scanCommand,
+            mutate = mutateCommand,
             coverageFile = "coverage.cobertura.xml",
-            mutation = "not used"
+            mutationFile = "mutation-report.json"
         }, new JsonSerializerOptions { WriteIndented = true });
         if (File.Exists(path) && File.ReadAllText(path) == json)
             return;
@@ -96,6 +97,7 @@ public static class DiagramPublisher
             supportsComplexity = document.SupportsComplexity,
             supportsCrap = document.SupportsCrap,
             coverageReady = document.CoverageReady,
+            mutationReady = document.MutationReady,
             nodes = document.Nodes
                 .OrderBy(node => node.Id, StringComparer.Ordinal)
                 .Select(node => new
@@ -121,7 +123,10 @@ public static class DiagramPublisher
                             coverage = member.Coverage,
                             crap = member.Crap,
                             isPublic = member.IsPublic,
-                            kind = member.Kind
+                            kind = member.Kind,
+                            killed = member.Killed,
+                            survived = member.Survived,
+                            uncovered = member.Uncovered
                         })
                 }),
             edges = document.Edges

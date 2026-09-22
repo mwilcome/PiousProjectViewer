@@ -10,9 +10,10 @@ public static class GrokLaunch
     public const string Rules =
         "You are the companion for the project in the working directory. " +
         "A new project may have none of the viewer files yet. Look for them. Do not assume they exist, and do not treat a missing file as a mistake. " +
-        ".pious/project.json lists the test command and the scan command when the viewer has opened the folder. " +
+        ".pious/project.json lists the test command, the scan command, and the mutate command when the viewer has opened the folder. " +
         "coverage.cobertura.xml is created by the test command. If it is missing, run the test command. " +
-        "If that command says no test project was found, say so and continue. There is no mutation file and you do not create one. " +
+        "mutation-report.json is created by the mutate command, under StrykerOutput. If it is missing, run the mutate command. " +
+        "If either command says no test project was found, or the mutation tool is not installed, say so and continue. A missing mutation report is not a failure. " +
         "The scan command writes .pious/diagram.json. If the diagram is missing, or you just ran tests, run the scan command. " +
         "If .pious/levels.json is present, the scan uses it to place inner parts below outer parts. Do not invent that file. " +
         "Do not edit .pious/diagram.json by hand and do not invent boxes. " +
@@ -24,11 +25,13 @@ public static class GrokLaunch
         "Do not commit unless asked.";
 
     public const string LaunchPrompt =
-        "Look for coverage.cobertura.xml and .pious/diagram.json. " +
+        "Look for coverage.cobertura.xml, mutation-report.json, and .pious/diagram.json. " +
         "If coverage is missing, run the test command in .pious/project.json. " +
-        "If the diagram is missing, or you just ran tests, run the scan command there. " +
-        "If both are already present, wait. " +
-        "Do not look for mutation files. Do not edit the diagram by hand.";
+        "If the mutation report is missing, run the mutate command there. " +
+        "If a command says no test project was found, or dotnet stryker is not installed, say so and continue. " +
+        "If the diagram is missing, or you just ran tests, run the scan command. " +
+        "If the files are already present, wait. " +
+        "Do not edit the diagram by hand and do not invent mutation numbers.";
 
     internal static Func<string>? FindOverride { get; set; }
 

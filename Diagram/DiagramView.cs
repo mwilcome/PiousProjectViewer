@@ -447,17 +447,25 @@ public sealed class DiagramView : Control
     public string MemberLabel(DiagramMember member)
     {
         var mark = member.IsPublic ? "+" : "-";
+        var mutants = MutationText(member);
         if (member.Kind == "field")
             return $"       field          {mark} {member.Name}";
         if (_mode == PaintMode.Crap && _document?.CoverageReady == true)
-            return $"{member.Crap,6:0.0}   {member.Cc,2}   {CoverageText(member),4}   {mark} {member.Name}";
-        return $"{member.Cc,2}   {mark} {member.Name}";
+            return $"{member.Crap,6:0.0}   {member.Cc,2}   {CoverageText(member),4}   {mutants}{mark} {member.Name}";
+        return $"{member.Cc,2}   {mutants}{mark} {member.Name}";
     }
 
     public string ColumnHeader =>
-        _mode == PaintMode.Crap && _document?.CoverageReady == true
-            ? "  CRAP  CC  Cov  method"
-            : "CC  method";
+        (_mode == PaintMode.Crap && _document?.CoverageReady == true
+            ? "  CRAP  CC  Cov  "
+            : "CC  ")
+        + (_document?.MutationReady == true ? "k  s  u  " : "")
+        + "method";
+
+    static string MutationText(DiagramMember member) =>
+        member.Killed is int killed
+            ? $"{killed,2} {member.Survived ?? 0,2} {member.Uncovered ?? 0,2}   "
+            : "";
 
     static string CoverageText(DiagramMember member) =>
         member.Coverage is double coverage ? coverage.ToString("0.#") + "%" : "—";
