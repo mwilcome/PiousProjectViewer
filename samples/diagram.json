@@ -1,0 +1,24 @@
+{
+  "title": "Sample",
+  "nodes": [
+    { "id": "domain", "name": "Domain", "kind": "package", "worstCc": 3, "rank": 0 },
+    { "id": "model", "name": "Model", "kind": "package", "worstCc": 2, "rank": 0 },
+    { "id": "engine", "name": "Engine", "kind": "package", "worstCc": 16, "rank": 1 },
+    { "id": "engine.layout", "name": "Layout", "parent": "engine", "kind": "package", "worstCc": 6, "rank": 0 },
+    { "id": "engine.route", "name": "Route", "parent": "engine", "kind": "package", "worstCc": 16, "rank": 0 },
+    { "id": "view", "name": "View", "kind": "package", "worstCc": 9, "rank": 2 },
+    { "id": "host", "name": "Host", "kind": "package", "worstCc": 22, "rank": 3 },
+    { "id": "shell", "name": "Shell", "kind": "package", "worstCc": 4, "rank": 3 },
+    { "id": "avalonia", "name": "Avalonia", "kind": "foreign", "rank": 3 }
+  ],
+  "edges": [
+    { "from": "engine", "to": "domain", "violating": false },
+    { "from": "engine", "to": "model", "violating": false },
+    { "from": "view", "to": "engine", "violating": false },
+    { "from": "host", "to": "view", "violating": false },
+    { "from": "shell", "to": "view", "violating": false },
+    { "from": "domain", "to": "host", "violating": true },
+    { "from": "view", "to": "avalonia", "violating": false },
+    { "from": "engine.route", "to": "engine.layout", "violating": false }
+  ]
+}

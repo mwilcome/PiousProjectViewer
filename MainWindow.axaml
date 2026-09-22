@@ -1,9 +1,37 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:diagram="using:pious_project_viewer.Diagram"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+        mc:Ignorable="d" d:DesignWidth="1100" d:DesignHeight="720"
         x:Class="pious_project_viewer.MainWindow"
-        Title="pious_project_viewer">
-    Welcome to Avalonia!
+        Title="pious project viewer"
+        Width="1100" Height="720"
+        KeyDown="OnKeyDown"
+        Background="#F4F1EC">
+    <Grid ColumnDefinitions="*,300">
+        <diagram:DiagramView x:Name="Diagram" />
+        <Border Grid.Column="1" Background="#EFEAE3" Padding="18">
+            <StackPanel Spacing="12">
+                <TextBlock x:Name="PathText"
+                           FontSize="18"
+                           FontWeight="SemiBold"
+                           Foreground="#2C2A26"
+                           TextWrapping="Wrap" />
+                <TextBlock Text="Coverage: not run"
+                           Foreground="#5C574F" />
+                <TextBlock x:Name="DetailText"
+                           Foreground="#2C2A26"
+                           TextWrapping="Wrap" />
+                <Button x:Name="BackButton"
+                        Content="Back"
+                        HorizontalAlignment="Left"
+                        Click="OnBack" />
+                <TextBlock Text="Drag to pan. Wheel to zoom. Double-click a box to open it. Esc goes back."
+                           FontSize="12"
+                           Foreground="#5C574F"
+                           TextWrapping="Wrap" />
+            </StackPanel>
+        </Border>
+    </Grid>
 </Window>
