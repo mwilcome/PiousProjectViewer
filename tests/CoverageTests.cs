@@ -121,7 +121,7 @@ public class CoverageTests
             Assert.Empty(CSharpScanner.FindProjects(missing));
             Assert.Empty(CSharpScanner.FindSolutions(missing));
             Assert.Empty(CSharpScanner.FindTestProjects(missing));
-            Assert.Equal("echo No test project found.", new CSharpScanner().TestCommand(dir));
+            Assert.Equal("", new CSharpScanner().TestCommand(dir));
         }
         finally
         {

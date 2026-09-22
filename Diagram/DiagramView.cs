@@ -111,8 +111,22 @@ public sealed class DiagramView : Control
             _depth.Clear();
         _selectedId = _selectedId is not null && document.Nodes.Any(node => node.Id == _selectedId) ? _selectedId : null;
         _userMoved = true;
+        if (_depth.Count == 0 && OpenAloneRoot())
+            _userMoved = false;
         Rebuild();
         ViewChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    bool OpenAloneRoot()
+    {
+        if (_document is null || _depth.Count > 0)
+            return false;
+        var root = _document.Nodes.SingleOrDefault(node => node.Parent is null && node.Kind != "foreign");
+        if (root is null || _document.Nodes.All(node => node.Parent != root.Id))
+            return false;
+        _depth.Push(root.Id);
+        _selectedId = null;
+        return true;
     }
 
     public void Open(string id)

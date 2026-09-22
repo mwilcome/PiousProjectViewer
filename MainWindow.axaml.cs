@@ -105,7 +105,7 @@ public partial class MainWindow : Window
         _session.Language = selected == "Auto" ? "auto" : selected;
         SessionStore.Save(_session);
         if (!string.IsNullOrWhiteSpace(_session.Folder))
-            DiagramPublisher.WriteRecipe(_session.Folder, ScanCommand.TestCommandFor(_session.Folder), ScanCommand.CommandLine(_session.Folder, _session.Language), ScanCommand.MutateCommandFor(_session.Folder));
+            DiagramPublisher.WriteRecipe(_session.Folder, ScanCommand.TestCommandFor(_session.Folder), ScanCommand.CommandLine(_session.Folder, _session.Language), ScanCommand.MutateCommandFor(_session.Folder), ScanCommand.CoverageFileFor(_session.Folder));
         RefreshInspector();
     }
 
@@ -143,7 +143,7 @@ public partial class MainWindow : Window
             && !string.Equals(previous, folder, StringComparison.OrdinalIgnoreCase);
         _session.Folder = folder;
         SessionStore.Save(_session);
-        DiagramPublisher.WriteRecipe(folder, ScanCommand.TestCommandFor(folder), ScanCommand.CommandLine(folder, _session.Language), ScanCommand.MutateCommandFor(folder));
+        DiagramPublisher.WriteRecipe(folder, ScanCommand.TestCommandFor(folder), ScanCommand.CommandLine(folder, _session.Language), ScanCommand.MutateCommandFor(folder), ScanCommand.CoverageFileFor(folder));
         _pulse.WatchFile(diagramPath);
         if (restartCompanion)
             _ = StartCompanionAsync();
@@ -344,7 +344,8 @@ public partial class MainWindow : Window
         var line = member.Line;
         button.Click += (_, _) =>
         {
-            if (owner.File is string file)
+            var file = member.File ?? owner.File;
+            if (file is not null)
                 SourceEditor.Open(file, line);
         };
         MemberRows.Children.Add(button);

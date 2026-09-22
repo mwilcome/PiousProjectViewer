@@ -16,7 +16,7 @@ public sealed class JavaScanner : ILanguageScanner
 
     public string Name => "Java";
     public bool SupportsComplexity => true;
-    public bool SupportsCrap => false;
+    public bool SupportsCrap => true;
 
     public bool CanScan(string folder) =>
         File.Exists(Path.Combine(folder, "pom.xml"))
@@ -26,15 +26,17 @@ public sealed class JavaScanner : ILanguageScanner
     public string TestCommand(string folder)
     {
         if (File.Exists(Path.Combine(folder, "pom.xml")))
-            return "mvn -q test";
+            return "mvn -q org.jacoco:jacoco-maven-plugin:0.8.13:prepare-agent test org.jacoco:jacoco-maven-plugin:0.8.13:report";
         if (File.Exists(Path.Combine(folder, "gradlew.bat")))
-            return "gradlew.bat test";
+            return "gradlew.bat test jacocoTestReport";
         if (File.Exists(Path.Combine(folder, "gradlew")))
-            return "./gradlew test";
-        return "gradle test";
+            return "./gradlew test jacocoTestReport";
+        return "gradle test jacocoTestReport";
     }
 
-    public string MutateCommand(string folder) => "echo No mutator for this language.";
+    public string MutateCommand(string folder) => "";
+
+    public string? CoverageFile(string folder) => "jacoco.xml";
 
     public DiagramDocument Scan(string folder)
     {
@@ -45,7 +47,7 @@ public sealed class JavaScanner : ILanguageScanner
             Title = Path.GetFileName(folder),
             ScannerName = Name,
             SupportsComplexity = true,
-            SupportsCrap = false
+            SupportsCrap = true
         };
         foreach (var space in types.Select(type => type.Space).Distinct())
         {
@@ -84,6 +86,8 @@ public sealed class JavaScanner : ILanguageScanner
                     document.Edges.Add(new DiagramEdge { From = type.Id, To = target });
             }
         }
+        DiagramNodes.EnsureParents(document);
+        MetricApply.Apply(document, folder);
         LevelRank.Apply(document, folder);
         return document;
     }
@@ -104,16 +108,19 @@ public sealed class JavaScanner : ILanguageScanner
             for (var i = line; i < lines.Length; i++)
             {
                 var method = MethodPattern.Match(lines[i]);
-                if (method.Success && method.Groups[1].Value != name)
+                if (method.Success)
+                    starts.Add(i);
+                else if (Regex.IsMatch(lines[i], @"^\s*(?:public|private|protected)?\s*" + Regex.Escape(name) + @"\s*\("))
                     starts.Add(i);
             }
             for (var i = 0; i < starts.Count; i++)
             {
                 var end = i + 1 < starts.Count ? starts[i + 1] : lines.Length;
                 var body = string.Join('\n', lines.Skip(starts[i]).Take(end - starts[i]));
+                var named = MethodPattern.Match(lines[starts[i]]);
                 methods.Add(new DiagramMember
                 {
-                    Name = MethodPattern.Match(lines[starts[i]]).Groups[1].Value + "()",
+                    Name = (named.Success ? named.Groups[1].Value : name) + "()",
                     Line = starts[i] + 1,
                     Cc = 1 + DecisionPattern.Matches(body).Count,
                     IsPublic = lines[starts[i]].Contains("public", StringComparison.Ordinal),

@@ -1,6 +1,46 @@
+using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace PiousProjectViewer.Diagram;
+
+public static class DiagramNodes
+{
+    public static void EnsureParents(DiagramDocument document)
+    {
+        var ids = document.Nodes.Select(node => node.Id).ToHashSet(StringComparer.Ordinal);
+        var missing = document.Nodes
+            .Select(node => node.Parent)
+            .Where(parent => parent is not null && !ids.Contains(parent))
+            .Cast<string>()
+            .Distinct()
+            .ToList();
+        while (missing.Count > 0)
+        {
+            var id = missing[0];
+            missing.RemoveAt(0);
+            if (!ids.Add(id))
+                continue;
+            var body = id.Contains(':') ? id[(id.IndexOf(':') + 1)..] : id;
+            var dot = body.LastIndexOf('.');
+            string? parent = null;
+            if (dot > 0)
+            {
+                var prefix = id[..(id.IndexOf(':') + 1)];
+                parent = prefix + body[..dot];
+                if (!ids.Contains(parent))
+                    missing.Add(parent);
+            }
+            document.Nodes.Add(new DiagramNode
+            {
+                Id = id,
+                Name = body[(dot + 1)..],
+                Parent = parent,
+                Kind = "package"
+            });
+        }
+    }
+}
 
 public sealed class DiagramDocument
 {
@@ -40,6 +80,7 @@ public sealed class DiagramMember
     public double? Crap { get; set; }
     public bool IsPublic { get; set; }
     public string Kind { get; set; } = "method";
+    public string? File { get; set; }
     public int? Killed { get; set; }
     public int? Survived { get; set; }
     public int? Uncovered { get; set; }

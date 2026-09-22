@@ -37,5 +37,8 @@ public static class ScanCommand
         Scanners.For(folder)?.TestCommand(folder) ?? "echo No scanner for this folder.";
 
     public static string MutateCommandFor(string folder) =>
-        Scanners.For(folder)?.MutateCommand(folder) ?? "echo No scanner for this folder.";
+        Scanners.For(folder)?.MutateCommand(folder) ?? "";
+
+    public static string? CoverageFileFor(string folder) =>
+        Scanners.For(folder)?.CoverageFile(folder);
 }

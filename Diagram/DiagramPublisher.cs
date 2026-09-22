@@ -34,24 +34,44 @@ public static class DiagramPublisher
     public static string ProposalPath(string projectFolder) =>
         Path.Combine(projectFolder, FolderName, ProposalName);
 
-    public static void WriteRecipe(string projectFolder, string testCommand, string scanCommand, string mutateCommand)
+    public static void WriteRecipe(string projectFolder, string testCommand, string scanCommand, string mutateCommand, string? coverageFile)
     {
         var directory = Path.Combine(projectFolder, FolderName);
         Directory.CreateDirectory(directory);
+        IgnorePious(projectFolder);
         var path = Path.Combine(directory, RecipeName);
-        var json = JsonSerializer.Serialize(new
-        {
-            test = testCommand,
-            scan = scanCommand,
-            mutate = mutateCommand,
-            coverageFile = "coverage.cobertura.xml",
-            mutationFile = "mutation-report.json"
-        }, new JsonSerializerOptions { WriteIndented = true });
+        var recipe = new Dictionary<string, string>();
+        if (WorthRunning(testCommand))
+            recipe["test"] = testCommand;
+        if (WorthRunning(scanCommand))
+            recipe["scan"] = scanCommand;
+        if (WorthRunning(mutateCommand))
+            recipe["mutate"] = mutateCommand;
+        if (WorthRunning(testCommand) && !string.IsNullOrWhiteSpace(coverageFile))
+            recipe["coverageFile"] = coverageFile;
+        var json = JsonSerializer.Serialize(recipe, new JsonSerializerOptions { WriteIndented = true });
         if (File.Exists(path) && File.ReadAllText(path) == json)
             return;
         var temporary = path + ".tmp";
         File.WriteAllText(temporary, json);
         File.Move(temporary, path, overwrite: true);
+    }
+
+    static bool WorthRunning(string? command) =>
+        !string.IsNullOrWhiteSpace(command)
+        && !command.TrimStart().StartsWith("echo ", StringComparison.OrdinalIgnoreCase);
+
+    static void IgnorePious(string projectFolder)
+    {
+        var path = Path.Combine(projectFolder, ".gitignore");
+        if (!File.Exists(path))
+            return;
+        var text = File.ReadAllText(path);
+        if (text.Contains(".pious", StringComparison.Ordinal))
+            return;
+        if (text.Length > 0 && !text.EndsWith('\n'))
+            text += "\n";
+        File.WriteAllText(path, text + ".pious/\n");
     }
 
     public static void PostUpdated(string projectFolder) =>
@@ -144,6 +164,7 @@ public static class DiagramPublisher
                             crap = member.Crap,
                             isPublic = member.IsPublic,
                             kind = member.Kind,
+                            file = member.File,
                             killed = member.Killed,
                             survived = member.Survived,
                             uncovered = member.Uncovered

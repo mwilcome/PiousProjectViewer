@@ -124,9 +124,18 @@ public static class DiagramScene
             .ThenByDescending(member => member.Cc)
             .ThenBy(member => member.Name, StringComparer.Ordinal)
             .ToList();
-        var lines = methods.Take(12).Select(ShortMember).ToList();
-        if (methods.Count > lines.Count)
-            lines.Add("+ " + (methods.Count - lines.Count) + " more");
+        var lines = new List<string>();
+        if (methods.Count > 0)
+        {
+            lines.AddRange(methods.Take(12).Select(ShortMember));
+            if (methods.Count > 12)
+                lines.Add("+ " + (methods.Count - 12) + " more");
+        }
+        else
+        {
+            lines.AddRange((node.Members ?? []).Where(member => member.Kind == "field").Take(8).Select(member => member.Name));
+        }
+        lines.AddRange((node.Members ?? []).Where(member => member.Kind is "html" or "scss").Select(ShortMember));
         return lines;
     }
 
@@ -136,6 +145,8 @@ public static class DiagramScene
         var paren = name.IndexOf('(');
         if (paren > 0)
             name = name[..paren];
+        if (member.Kind is "html" or "scss")
+            return member.Kind + "  " + member.Name;
         if (name.Length > 24)
             name = name[..22] + "...";
         return (member.IsPublic ? "+ " : "- ") + name;

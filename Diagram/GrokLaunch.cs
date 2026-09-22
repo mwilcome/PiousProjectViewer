@@ -9,31 +9,29 @@ public static class GrokLaunch
 
     public const string Rules =
         "You are the companion for the project in the working directory. " +
-        "A new project may have none of the viewer files yet. Look for them. Do not assume they exist, and do not treat a missing file as a mistake. " +
-        ".pious/project.json lists the test command, the scan command, and the mutate command when the viewer has opened the folder. " +
-        "coverage.cobertura.xml is created by the test command. If it is missing, run the test command. " +
-        "mutation-report.json is created by the mutate command, under StrykerOutput. If it is missing, run the mutate command. " +
-        "If either command says no test project was found, or the mutation tool is not installed, say so and continue. A missing mutation report is not a failure. " +
-        "The scan command writes .pious/diagram.json. If the diagram is missing, or you just ran tests, run the scan command. " +
-        "If .pious/levels.json is present, the scan uses it to place inner parts below outer parts. Do not invent that file. " +
+        "Read .pious/project.json. The test, scan, and mutate commands are there when this language has them. Do not invent a different command. " +
+        "On start, if .pious/diagram.json is missing, run the scan command and wait. Do not run tests until the user asks. " +
+        "When the user says go add tests, or add tests: write tests in the normal place for the scanner in project.json. " +
+        "C# tests go in the test project. Angular tests are .spec.ts files beside the source. Java tests go under src/test/java. " +
+        "Cover the methods the diagram lists. If the coverage tool for that test command is not installed, install the normal one and run the test command once more. " +
+        "Then run the scan command. Do not edit diagram.json. " +
+        "Run each command once. If it fails, quote the error and go on. Do not try another shell. Do not search again for a report the command did not write. " +
+        "The scan command writes .pious/diagram.json. Run it when the diagram is missing, or after a test command succeeds. " +
+        "If .pious/levels.json is present, the scan uses it. Do not invent that file. " +
         "Do not edit .pious/diagram.json by hand and do not invent boxes. " +
         "When a line says you have mail, read .pious/to-agent.json, handle the oldest command, and remove it from the queue. " +
-        "refresh means run the test command in the mail, then run the scan command in the mail, even if those files already exist. " +
-        "refresh-node is the same, and the mail names the one box to pay attention to. " +
+        "refresh means run the test command in the mail if it is present, then the scan command. " +
+        "refresh-node is the same, and the mail names the one box. " +
         "proposal means write .pious/proposal.json in the same shape as diagram.json, regrouping real names only. Do not edit diagram.json. " +
-        "If the test command fails, still run the scan command, then say that the tests failed. " +
         "diagram-updated means the picture changed. Read .pious/diagram.json and wait. " +
         "Opening a file or moving around the diagram is not mail. " +
         "Do not commit unless asked.";
 
     public const string LaunchPrompt =
-        "Look for coverage.cobertura.xml, mutation-report.json, and .pious/diagram.json. " +
-        "If coverage is missing, run the test command in .pious/project.json. " +
-        "If the mutation report is missing, run the mutate command there. " +
-        "If a command says no test project was found, or dotnet stryker is not installed, say so and continue. " +
-        "If the diagram is missing, or you just ran tests, run the scan command. " +
-        "If the files are already present, wait. " +
-        "Do not edit the diagram by hand and do not invent mutation numbers.";
+        "Read .pious/project.json. If .pious/diagram.json is missing, run the scan command and wait. " +
+        "Do not run tests until the user asks. " +
+        "If the user says go add tests, write the tests for this language, run the test command from project.json once, then the scan command. " +
+        "Do not edit the diagram by hand and do not invent commands or numbers.";
 
     internal static Func<string>? FindOverride { get; set; }
 

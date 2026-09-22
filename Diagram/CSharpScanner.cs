@@ -23,17 +23,19 @@ public sealed class CSharpScanner : ILanguageScanner
             return DotNetTest(Path.GetRelativePath(folder, solution[0]));
         var tests = FindTestProjects(folder);
         if (tests.Count == 0)
-            return "echo No test project found.";
+            return "";
         return string.Join(" && ", tests.Select(path => DotNetTest(Path.GetRelativePath(folder, path))));
     }
 
     static string DotNetTest(string relativePath) =>
         "dotnet test \"" + relativePath + "\" --collect:\"XPlat Code Coverage\"";
 
+    public string? CoverageFile(string folder) => "coverage.cobertura.xml";
+
     public string MutateCommand(string folder)
     {
         if (FindSolutions(folder).Count == 0 && FindTestProjects(folder).Count == 0)
-            return "echo No test project found.";
+            return "";
         return "dotnet stryker --reporter json";
     }
 

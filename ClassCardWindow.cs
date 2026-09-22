@@ -60,7 +60,8 @@ public sealed class ClassCardWindow : Window
             };
             button.Click += (_, _) =>
             {
-                if (_node?.File is string file)
+                var file = member.File ?? _node?.File;
+                if (file is not null)
                     SourceEditor.Open(file, line);
             };
             body.Children.Add(button);
