@@ -126,6 +126,109 @@ public class DiagramSceneTests
         Assert.Equal(["engine.layout", "engine.route"], scene.Boxes.Keys.OrderBy(id => id));
     }
 
+    [Fact]
+    public void ScannerReadsThisProjectAndSkipsTheTestProject()
+    {
+        var project = CSharpScanner.FindAppProject(AppContext.BaseDirectory);
+        Assert.NotNull(project);
+        var scanner = new CSharpScanner();
+        Assert.True(scanner.SupportsComplexity);
+        Assert.True(scanner.SupportsCrap);
+        var document = scanner.Scan(Path.GetDirectoryName(project)!);
+        Assert.Contains(document.Nodes, node => node.Id == "ns:pious_project_viewer.Diagram");
+        Assert.DoesNotContain(document.Nodes, node => node.Name == "CrapMathTests");
+        Assert.DoesNotContain(document.Nodes, node => node.Name == "TypeFact");
+        Assert.Contains(document.Nodes, node => node.Name == "DiagramView" && node.WorstCc > 1);
+        Assert.Contains(document.Edges, edge => edge.To == "foreign:Avalonia");
+        Assert.False(document.CoverageReady);
+    }
+
+    [Fact]
+    public void DeclaredRelationshipsIgnoreLocalNames()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "pious-scan-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            File.WriteAllText(Path.Combine(dir, "Demo.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\"></Project>");
+            File.WriteAllText(Path.Combine(dir, "Types.cs"), """
+                namespace Demo;
+                public class Alpha
+                {
+                    public Beta Field;
+                    public Alpha(Beta value) {}
+                    private class Hidden {}
+                }
+                public class Beta
+                {
+                    void Run() { Alpha local = null; }
+                }
+                """);
+            var document = new CSharpScanner().Scan(dir);
+            Assert.Contains(document.Edges, edge => edge.From.EndsWith("Alpha") && edge.To.EndsWith("Beta"));
+            Assert.DoesNotContain(document.Edges, edge => edge.From.EndsWith("Beta") && edge.To.EndsWith("Alpha"));
+            Assert.DoesNotContain(document.Nodes, node => node.Name == "Hidden");
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
+    [Fact]
+    public void CrapFillStaysNeutralWithoutCoverage()
+    {
+        var node = new DiagramNode { WorstCc = 22, Kind = "package" };
+        Assert.Equal(BoxPaint.CrapNeutral, BoxPaint.Fill(node, PaintMode.Crap, false));
+        Assert.NotEqual(Heat.Violation, BoxPaint.Fill(node, PaintMode.Complexity, false));
+    }
+
+    [Fact]
+    public void CoverageReportFeedsCrap()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "pious-cov-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            File.WriteAllText(Path.Combine(dir, "Demo.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\"></Project>");
+            File.WriteAllText(Path.Combine(dir, "Types.cs"), """
+                namespace Demo;
+                public class Alpha
+                {
+                    public int Run(int value)
+                    {
+                        if (value > 0) return value;
+                        return 0;
+                    }
+                }
+                """);
+            var results = Path.Combine(dir, "TestResults");
+            Directory.CreateDirectory(results);
+            File.WriteAllText(Path.Combine(results, "coverage.cobertura.xml"), """
+                <coverage>
+                  <packages><package><classes>
+                    <class filename="Types.cs">
+                      <lines>
+                        <line number="5" hits="1"/>
+                        <line number="6" hits="1"/>
+                        <line number="7" hits="1"/>
+                      </lines>
+                    </class>
+                  </classes></package></packages>
+                </coverage>
+                """);
+            var document = new CSharpScanner().Scan(dir);
+            var alpha = document.Nodes.Single(node => node.Name == "Alpha");
+            Assert.True(document.CoverageReady);
+            Assert.NotNull(alpha.CrapMu);
+            Assert.Equal("calm", new CrapRollup(alpha.CrapMu!.Value, alpha.CrapMax!.Value, alpha.CrapSigma!.Value).Band);
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
     static DiagramDocument LoadSample()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);

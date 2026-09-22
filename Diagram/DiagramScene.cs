@@ -58,7 +58,14 @@ public static class DiagramScene
 
     public static Scene Build(DiagramDocument document, string? parent)
     {
-        var visible = document.Nodes.Where(node => node.Parent == parent).ToList();
+        var structural = document.Nodes.Where(node => node.Kind != "foreign" && node.Parent == parent).ToList();
+        var structuralIds = structural.Select(node => node.Id).ToHashSet();
+        var foreignIds = document.Edges
+            .Where(edge => document.Nodes.Any(node => node.Id == edge.To && node.Kind == "foreign"))
+            .Where(edge => VisibleStructural(document, edge.From, structuralIds) is not null)
+            .Select(edge => edge.To)
+            .ToHashSet();
+        var visible = structural.Concat(document.Nodes.Where(node => foreignIds.Contains(node.Id))).ToList();
         var rows = visible.Where(node => node.Kind != "foreign")
             .GroupBy(node => node.Rank)
             .OrderByDescending(group => group.Key)
@@ -68,20 +75,24 @@ public static class DiagramScene
             .OrderBy(node => node.Name, StringComparer.Ordinal)
             .ToList();
 
-        var columns = rows.Count == 0 ? 1 : rows.Max(row => row.Count);
+        var columns = rows.Count == 0 ? 1 : Math.Min(4, rows.Max(row => row.Count));
         var innerWidth = columns * BoxWidth + Math.Max(0, columns - 1) * GapX;
         var boxes = new Dictionary<string, Box>();
         var y = PadTop;
         foreach (var row in rows)
         {
-            var rowWidth = row.Count * BoxWidth + Math.Max(0, row.Count - 1) * GapX;
-            var x = PadX + (innerWidth - rowWidth) / 2;
-            foreach (var node in row)
+            for (var index = 0; index < row.Count; index += 4)
             {
-                boxes[node.Id] = new Box(x, y, BoxWidth, BoxHeight);
-                x += BoxWidth + GapX;
+                var slice = row.Skip(index).Take(4).ToList();
+                var rowWidth = slice.Count * BoxWidth + Math.Max(0, slice.Count - 1) * GapX;
+                var x = PadX + (innerWidth - rowWidth) / 2;
+                foreach (var node in slice)
+                {
+                    boxes[node.Id] = new Box(x, y, BoxWidth, BoxHeight);
+                    x += BoxWidth + GapX;
+                }
+                y += BoxHeight + GapY;
             }
-            y += BoxHeight + GapY;
         }
 
         var contentBottom = rows.Count == 0 ? PadTop : y - GapY;
@@ -125,6 +136,20 @@ public static class DiagramScene
             routes.Add(new RoutedEdge(from, to, violating, Points(boxes[from], boxes[to], violating)));
         }
         return routes;
+    }
+
+    static string? VisibleStructural(DiagramDocument document, string id, HashSet<string> structuralIds)
+    {
+        var nodes = document.Nodes.ToDictionary(node => node.Id);
+        if (!nodes.TryGetValue(id, out var current))
+            return null;
+        while (true)
+        {
+            if (structuralIds.Contains(current.Id))
+                return current.Id;
+            if (current.Parent is null || !nodes.TryGetValue(current.Parent, out current))
+                return null;
+        }
     }
 
     public static string? VisibleEnd(

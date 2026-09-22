@@ -15,12 +15,12 @@ public sealed class DiagramView : Control
     static readonly IBrush Quiet = Brush("#8A847C");
     static readonly IBrush FrameStroke = Brush("#C4BEB4");
     static readonly IBrush Violation = Brush(Heat.Violation);
-    static readonly IBrush ForeignFill = Brush("#E7E2DA");
 
     readonly Stack<string> _depth = new();
 
     DiagramDocument? _document;
     Scene _scene = Scene.Empty;
+    PaintMode _mode = PaintMode.Complexity;
     string? _selectedId;
     Vector _pan = new(48, 36);
     double _scale = 1;
@@ -37,6 +37,17 @@ public sealed class DiagramView : Control
     }
 
     public event EventHandler? ViewChanged;
+
+    public PaintMode Mode
+    {
+        get => _mode;
+        set
+        {
+            _mode = value;
+            InvalidateVisual();
+            ViewChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
 
     public DiagramDocument? Document
     {
@@ -62,7 +73,7 @@ public sealed class DiagramView : Control
                 return "";
             var names = new List<string> { _document.Title };
             foreach (var id in _depth.Reverse())
-                names.Add(NameOf(id));
+                names.Add(Display(id, Node(id)?.Name));
             return string.Join("  /  ", names);
         }
     }
@@ -73,11 +84,20 @@ public sealed class DiagramView : Control
         {
             var node = Selected();
             if (node is null)
-                return "Fill is complexity, in sage and clay. Red is only an arrow that points from an inner part out to an outer one. The open circle means coverage has not been run.";
-            var cc = node.WorstCc is int value ? value.ToString() : "none";
+                return ModeLine() + " Red is only an arrow that points from an inner part out to an outer one.";
             var inside = HasChildren(node.Id) ? " Double-click to open it." : "";
-            return $"{node.Name}. Worst method complexity {cc}, {Heat.Word(node.WorstCc)}. Coverage has not been run.{inside}";
+            return $"{Display(node.Id, node.Name)}. {NodeLine(node)}{inside}";
         }
+    }
+
+    public void Open(string id)
+    {
+        _depth.Clear();
+        _depth.Push(id);
+        _selectedId = null;
+        _userMoved = false;
+        Rebuild();
+        ViewChanged?.Invoke(this, EventArgs.Empty);
     }
 
     public void GoBack()
@@ -96,7 +116,8 @@ public sealed class DiagramView : Control
         context.FillRectangle(CanvasBrush, new Rect(Bounds.Size));
         if (_document is null || _scene.Boxes.Count == 0)
         {
-            DrawText(context, "No diagram loaded.", 16, Ink, new Point(24, 24));
+            var note = string.IsNullOrWhiteSpace(_document?.Note) ? "Open a project folder to scan it." : _document.Note;
+            DrawText(context, note, 16, Ink, new Point(24, 24));
             return;
         }
 
@@ -210,7 +231,7 @@ public sealed class DiagramView : Control
     void DrawNode(DrawingContext context, DiagramNode node, Box box, bool selected)
     {
         var rect = ToRect(box);
-        var fill = node.Kind == "foreign" ? ForeignFill : Brush(Heat.Color(node.WorstCc));
+        var fill = Brush(BoxPaint.Fill(node, _mode, _document?.CoverageReady == true));
         var pen = new Pen(selected ? Ink : Quiet, selected ? 2 : 1.2);
         if (node.Kind == "foreign")
             context.DrawEllipse(fill, pen, rect);
@@ -222,7 +243,7 @@ public sealed class DiagramView : Control
             : new Rect(rect.Right - 20, rect.Y + 10, 7, 7);
         context.DrawEllipse(null, new Pen(Quiet, 1.2), mark);
 
-        var caption = node.WorstCc is int cc ? "cc " + cc : "library";
+        var caption = Caption(node);
         DrawCentered(context, node.Name, rect, 16, Ink, -9);
         DrawCentered(context, caption, rect, 12, Quiet, 11);
     }
@@ -311,7 +332,50 @@ public sealed class DiagramView : Control
 
     DiagramNode? Node(string id) => _document?.Nodes.FirstOrDefault(node => node.Id == id);
 
-    string NameOf(string id) => Node(id)?.Name ?? id;
+    string ModeLine() => _mode switch
+    {
+        PaintMode.Crap when _document?.SupportsCrap != true => "This scanner does not compute CRAP.",
+        PaintMode.Crap when _document?.CoverageReady != true => "CRAP is selected. No coverage report was found, so the boxes stay neutral. Tests were not run.",
+        PaintMode.Crap => "CRAP colors the boxes from complexity and coverage. Calm is μ+σ at or under 8. Hot is above 20.",
+        _ => "Complexity colors the boxes. Tests do not change this color."
+    };
+
+    string NodeLine(DiagramNode node)
+    {
+        var cc = node.WorstCc is int value ? value.ToString() : "none";
+        if (_mode == PaintMode.Crap && _document?.CoverageReady == true && node.CrapMu is not null && node.CrapSigma is not null)
+        {
+            var rollup = new CrapRollup(node.CrapMu.Value, node.CrapMax ?? node.CrapMu.Value, node.CrapSigma.Value);
+            return $"CRAP μ {rollup.Mu:0.0}, max {rollup.Max:0.0}, σ {rollup.Sigma:0.0}, {rollup.Band}. Worst method complexity {cc}.";
+        }
+        if (_mode == PaintMode.Crap)
+            return $"Worst method complexity {cc}. CRAP is not available until a coverage report exists.";
+        return $"Worst method complexity {cc}, {Heat.Word(node.WorstCc)}.";
+    }
+
+    string Caption(DiagramNode node)
+    {
+        if (node.Kind == "foreign")
+            return "library";
+        if (_mode == PaintMode.Crap && _document?.CoverageReady == true && node.CrapMu is not null)
+            return "μ " + node.CrapMu.Value.ToString("0.0");
+        return node.WorstCc is int cc ? "cc " + cc : "no methods";
+    }
+
+    static string Display(string id, string? name)
+    {
+        if (!string.IsNullOrWhiteSpace(name) && !name.StartsWith("ns:", StringComparison.Ordinal) && !name.StartsWith("type:", StringComparison.Ordinal))
+            return name;
+        var bare = id;
+        var colon = bare.IndexOf(':');
+        if (colon >= 0)
+            bare = bare[(colon + 1)..];
+        var slash = bare.LastIndexOf('/');
+        if (slash >= 0)
+            bare = bare[(slash + 1)..];
+        var dot = bare.LastIndexOf('.');
+        return dot < 0 ? bare : bare[(dot + 1)..];
+    }
 
     bool HasChildren(string id) => _document?.Nodes.Any(node => node.Parent == id) == true;
 
