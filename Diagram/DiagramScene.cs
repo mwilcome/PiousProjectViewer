@@ -85,7 +85,7 @@ public static class DiagramScene
             for (var index = 0; index < row.Count; index += 4)
             {
                 var slice = row.Skip(index).Take(4).ToList();
-                var heights = slice.Select(node => HeightFor(node)).ToList();
+                var heights = slice.Select(node => HeightFor(document, node)).ToList();
                 var rowHeight = heights.Max();
                 var rowWidth = slice.Count * BoxWidth + Math.Max(0, slice.Count - 1) * GapX;
                 var x = PadX + (innerWidth - rowWidth) / 2;
@@ -108,18 +108,18 @@ public static class DiagramScene
         return new Scene(frame, title, boxes, Routes(document, parent, boxes));
     }
 
-    public static double HeightFor(DiagramNode node)
+    public static double HeightFor(DiagramDocument document, DiagramNode node)
     {
         if (node.Kind == "foreign")
             return BoxHeight;
-        var lines = LinesIn(node).Count;
+        var lines = LinesIn(document, node).Count;
         return lines == 0 ? BoxHeight : 50 + lines * LineHeight + 10;
     }
 
-    public static IReadOnlyList<string> LinesIn(DiagramNode node)
+    public static IReadOnlyList<string> LinesIn(DiagramDocument document, DiagramNode node)
     {
         var methods = (node.Members ?? [])
-            .Where(member => member.Kind != "field")
+            .Where(member => member.Kind is not ("field" or "html" or "scss"))
             .OrderByDescending(member => member.IsPublic)
             .ThenByDescending(member => member.Cc)
             .ThenBy(member => member.Name, StringComparer.Ordinal)
@@ -133,10 +133,52 @@ public static class DiagramScene
         }
         else
         {
-            lines.AddRange((node.Members ?? []).Where(member => member.Kind == "field").Take(8).Select(member => member.Name));
+            lines.AddRange((node.Members ?? []).Where(member => member.Kind == "field").Take(8).Select(member => "ts  " + member.Name));
         }
         lines.AddRange((node.Members ?? []).Where(member => member.Kind is "html" or "scss").Select(ShortMember));
+        var kinds = FileKinds(document, node);
+        if (kinds.Count > 1 && lines.All(line => !kinds.Any(kind => line.StartsWith(kind, StringComparison.Ordinal))))
+            lines.Insert(0, string.Join("  ·  ", kinds));
         return lines;
+    }
+
+    public static IReadOnlyList<string> FileKinds(DiagramDocument document, DiagramNode node)
+    {
+        var found = new HashSet<string>(StringComparer.Ordinal);
+        Collect(node);
+        var order = new[] { "ts", "html", "scss", "cs", "java" };
+        return order.Where(found.Contains).ToList();
+
+        void Collect(DiagramNode current)
+        {
+            if (current.File is string file)
+                Note(file);
+            foreach (var member in current.Members ?? [])
+            {
+                if (member.Kind is "html" or "scss")
+                    found.Add(member.Kind);
+                else if (member.File is string memberFile)
+                    Note(memberFile);
+                else if (member.Kind is "method" or "field")
+                    found.Add("ts");
+            }
+            foreach (var child in document.Nodes.Where(item => item.Parent == current.Id))
+                Collect(child);
+        }
+
+        void Note(string file)
+        {
+            if (file.EndsWith(".ts", StringComparison.OrdinalIgnoreCase))
+                found.Add("ts");
+            else if (file.EndsWith(".html", StringComparison.OrdinalIgnoreCase))
+                found.Add("html");
+            else if (file.EndsWith(".scss", StringComparison.OrdinalIgnoreCase) || file.EndsWith(".css", StringComparison.OrdinalIgnoreCase))
+                found.Add("scss");
+            else if (file.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
+                found.Add("cs");
+            else if (file.EndsWith(".java", StringComparison.OrdinalIgnoreCase))
+                found.Add("java");
+        }
     }
 
     public static string ShortMember(DiagramMember member)

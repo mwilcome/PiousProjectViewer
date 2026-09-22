@@ -332,7 +332,9 @@ public partial class MainWindow : Window
         var score = Diagram.Mode == PaintMode.Crap && child.CrapMu is double mu
             ? mu.ToString("0.0").PadLeft(6) + "  "
             : child.WorstCc is int cc ? "cc " + cc.ToString().PadLeft(2) + "  " : "         ";
-        var button = RowButton(score + child.Name);
+        var kindList = Diagram.Document is null ? [] : DiagramScene.FileKinds(Diagram.Document, child);
+        var kinds = kindList.Contains("html") || kindList.Contains("scss") ? string.Join(" · ", kindList) : "";
+        var button = RowButton(score + child.Name + (kinds.Length == 0 ? "" : "   " + kinds));
         var id = child.Id;
         button.Click += (_, _) => Diagram.Select(id);
         MemberRows.Children.Add(button);

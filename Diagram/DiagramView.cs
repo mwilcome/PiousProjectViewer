@@ -344,7 +344,7 @@ public sealed class DiagramView : Control
         DrawText(context, node.Name, 15, Ink, new Point(rect.X + 12, rect.Y + 8));
         DrawText(context, Caption(node), 11, selected || hot ? Ink : Quiet, new Point(rect.X + 12, rect.Y + 28));
         var lineY = rect.Y + 48;
-        foreach (var line in DiagramScene.LinesIn(node))
+        foreach (var line in DiagramScene.LinesIn(_document ?? new DiagramDocument(), node))
         {
             DrawText(context, line, 12, Quiet, new Point(rect.X + 12, lineY));
             lineY += 15;
@@ -533,9 +533,21 @@ public sealed class DiagramView : Control
         if (_mode == PaintMode.Crap && _document?.CoverageReady == true && node.CrapMu is not null)
             return "μ " + node.CrapMu.Value.ToString("0.0");
         if (node.WorstCc is int cc)
-            return "cc " + cc;
+            return WithKinds("cc " + cc, node);
         var fields = FieldNames(node);
-        return fields.Count == 0 ? "no methods" : fields.Count == 1 ? "1 field" : fields.Count + " fields";
+        var plain = fields.Count == 0 ? "no methods" : fields.Count == 1 ? "1 field" : fields.Count + " fields";
+        return WithKinds(plain, node);
+    }
+
+    string WithKinds(string caption, DiagramNode node)
+    {
+        if (_document is null)
+            return caption;
+        var kinds = DiagramScene.FileKinds(_document, node);
+        if (!kinds.Contains("html") && !kinds.Contains("scss"))
+            return caption;
+        var label = string.Join(" · ", kinds);
+        return caption is "no methods" ? label : caption + "   " + label;
     }
 
     static List<DiagramMember> MethodsOf(DiagramNode node) =>
