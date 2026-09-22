@@ -4,9 +4,9 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
-using pious_project_viewer.Diagram;
+using PiousProjectViewer.Diagram;
 
-namespace pious_project_viewer;
+namespace PiousProjectViewer;
 
 public partial class ClassCardWindow : Window
 {

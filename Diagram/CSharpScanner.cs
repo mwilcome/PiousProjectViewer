@@ -6,7 +6,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
-namespace pious_project_viewer.Diagram;
+namespace PiousProjectViewer.Diagram;
 
 public sealed class CSharpScanner : ILanguageScanner
 {
@@ -42,7 +42,11 @@ public sealed class CSharpScanner : ILanguageScanner
             };
         }
         if (projects.Count == 1)
-            return ScanProject(projects[0]);
+        {
+            var one = ScanProject(projects[0]);
+            LevelRank.Apply(one, folder);
+            return one;
+        }
 
         var combined = new DiagramDocument
         {
@@ -54,6 +58,7 @@ public sealed class CSharpScanner : ILanguageScanner
         foreach (var project in projects)
             Graft(combined, ScanProject(project));
         combined.CoverageReady = combined.Nodes.Any(node => node.CrapMu is not null);
+        LevelRank.Apply(combined, folder);
         return combined;
     }
 

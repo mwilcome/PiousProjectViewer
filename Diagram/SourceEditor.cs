@@ -2,7 +2,7 @@ using System;
 using System.Diagnostics;
 using System.IO;
 
-namespace pious_project_viewer.Diagram;
+namespace PiousProjectViewer.Diagram;
 
 public static class SourceEditor
 {

@@ -2,7 +2,7 @@ using System;
 using System.IO;
 using System.Linq;
 
-namespace pious_project_viewer.Diagram;
+namespace PiousProjectViewer.Diagram;
 
 public static class ScanCommand
 {
@@ -29,7 +29,7 @@ public static class ScanCommand
 
     public static string CommandLine(string folder, string language)
     {
-        var exe = Environment.ProcessPath ?? "pious-project-viewer";
+        var exe = Environment.ProcessPath ?? "PiousProjectViewer";
         return "\"" + exe + "\" --scan \"" + folder + "\" --language " + language;
     }
 

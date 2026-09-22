@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace pious_project_viewer.Diagram;
+namespace PiousProjectViewer.Diagram;
 
 public sealed class DiagramDocument
 {

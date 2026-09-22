@@ -4,7 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 
-namespace pious_project_viewer.Diagram;
+namespace PiousProjectViewer.Diagram;
 
 public static class DiagramPublisher
 {
@@ -110,6 +110,7 @@ public static class DiagramPublisher
                     crapMu = node.CrapMu,
                     crapMax = node.CrapMax,
                     crapSigma = node.CrapSigma,
+                    rank = node.Rank,
                     members = (node.Members ?? new List<DiagramMember>())
                         .OrderBy(member => member.Line)
                         .Select(member => new

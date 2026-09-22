@@ -1,8 +1,8 @@
 using Avalonia;
 using Avalonia.Headless;
-using pious_project_viewer;
+using PiousProjectViewer;
 
-namespace pious_project_viewer.Tests;
+namespace PiousProjectViewer.Tests;
 
 public static class HeadlessApp
 {

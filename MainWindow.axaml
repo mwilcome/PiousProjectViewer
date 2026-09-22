@@ -1,11 +1,11 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:diagram="using:pious_project_viewer.Diagram"
+        xmlns:diagram="using:PiousProjectViewer.Diagram"
         xmlns:terminal="using:Iciclecreek.Terminal"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d" d:DesignWidth="1100" d:DesignHeight="720"
-        x:Class="pious_project_viewer.MainWindow"
+        x:Class="PiousProjectViewer.MainWindow"
         Title="pious project viewer"
         Width="1100" Height="720"
         KeyDown="OnKeyDown"
@@ -30,9 +30,19 @@
         <Style Selector="Button.side:disabled">
             <Setter Property="Opacity" Value="0.4" />
         </Style>
-        <Style Selector="Button.primary">
+        <Style Selector="Button.side.primary">
             <Setter Property="Background" Value="#2F6B4F" />
             <Setter Property="BorderBrush" Value="#2F6B4F" />
+        </Style>
+        <Style Selector="Button.side.primary /template/ ContentPresenter">
+            <Setter Property="Background" Value="#2F6B4F" />
+            <Setter Property="BorderBrush" Value="#2F6B4F" />
+        </Style>
+        <Style Selector="Button.side.primary:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="#3E7A58" />
+        </Style>
+        <Style Selector="Button.side.primary:pressed /template/ ContentPresenter">
+            <Setter Property="Background" Value="#285C43" />
         </Style>
         <Style Selector="TextBlock.section">
             <Setter Property="FontSize" Value="11" />
@@ -119,19 +129,27 @@
                                Foreground="#8E887F"
                                TextWrapping="Wrap" />
                     <Border Height="1" Background="#2A2826" Margin="0,12,0,4" />
-                    <TextBlock x:Name="PathText"
-                               FontSize="15"
-                               FontWeight="SemiBold"
-                               TextWrapping="Wrap" />
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock x:Name="PathText"
+                                   FontSize="15"
+                                   FontWeight="SemiBold"
+                                   TextWrapping="Wrap"
+                                   VerticalAlignment="Center" />
+                        <Button x:Name="BackButton"
+                                Grid.Column="1"
+                                Classes="side"
+                                Content="Back"
+                                MinHeight="32"
+                                Padding="12,4"
+                                Margin="8,0,0,0"
+                                HorizontalAlignment="Right"
+                                IsVisible="False"
+                                Click="OnBack" />
+                    </Grid>
                     <TextBlock x:Name="DetailText"
                                FontSize="12"
                                Foreground="#C4BEB4"
                                TextWrapping="Wrap" />
-                    <Button x:Name="BackButton"
-                            Classes="side primary"
-                            Content="Back"
-                            IsVisible="False"
-                            Click="OnBack" />
                 </StackPanel>
             </ScrollViewer>
         </Border>

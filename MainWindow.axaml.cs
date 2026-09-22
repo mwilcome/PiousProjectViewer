@@ -7,15 +7,16 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
-using pious_project_viewer.Diagram;
+using PiousProjectViewer.Diagram;
 
-namespace pious_project_viewer;
+namespace PiousProjectViewer;
 
 public partial class MainWindow : Window
 {
     readonly ProjectPulse _pulse = new();
     Session _session = new();
     ClassCardWindow? _cardWindow;
+    bool _companionRunning;
     bool _ready;
 
     internal Session SessionState => _session;
@@ -183,7 +184,7 @@ public partial class MainWindow : Window
         PathText.Text = Diagram.PathText;
         DetailText.Text = Diagram.DetailText;
         BackButton.IsVisible = Diagram.CanGoBack;
-        var live = Companion.IsLive;
+        var live = _companionRunning && Companion.IsLive;
         var folderOpen = !string.IsNullOrWhiteSpace(_session.Folder);
         RefreshButton.IsEnabled = live && folderOpen;
         StartCompanionButton.Content = live ? "Restart companion" : "Start companion";
@@ -263,6 +264,7 @@ public partial class MainWindow : Window
         }
         if (Companion.IsLive)
             Companion.Kill();
+        _companionRunning = false;
         if (StartProcess is not null)
             await StartProcess();
         else
@@ -273,7 +275,8 @@ public partial class MainWindow : Window
                 "--cwd", _session.Folder,
                 "--rules", GrokLaunch.Rules,
                 GrokLaunch.LaunchPrompt);
-        CompanionStatus.Text = "Running in this folder.";
+        _companionRunning = StartProcess is not null || Companion.IsLive;
+        CompanionStatus.Text = _companionRunning ? "Running in this folder." : "The companion did not start.";
         RefreshInspector();
     }
 

@@ -1,7 +1,7 @@
 using System.Reflection;
-using pious_project_viewer.Diagram;
+using PiousProjectViewer.Diagram;
 
-namespace pious_project_viewer.Tests;
+namespace PiousProjectViewer.Tests;
 
 public class CrapMathTests
 {
@@ -146,7 +146,7 @@ public class DiagramSceneTests
         Assert.True(scanner.SupportsComplexity);
         Assert.True(scanner.SupportsCrap);
         var document = scanner.Scan(Path.GetDirectoryName(project)!);
-        Assert.Contains(document.Nodes, node => node.Id == "ns:pious_project_viewer.Diagram");
+        Assert.Contains(document.Nodes, node => node.Id == "ns:PiousProjectViewer.Diagram");
         Assert.DoesNotContain(document.Nodes, node => node.Name == "CrapMathTests");
         Assert.DoesNotContain(document.Nodes, node => node.Name == "TypeFact");
         Assert.Contains(document.Nodes, node => node.Name == "DiagramView" && node.WorstCc > 1 && node.File != null && node.File.EndsWith("DiagramView.cs") && node.Line > 0);

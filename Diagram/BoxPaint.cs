@@ -1,4 +1,4 @@
-namespace pious_project_viewer.Diagram;
+namespace PiousProjectViewer.Diagram;
 
 public enum PaintMode
 {

@@ -1,8 +1,8 @@
-﻿using Avalonia;
+using Avalonia;
 using System;
-using pious_project_viewer.Diagram;
+using PiousProjectViewer.Diagram;
 
-namespace pious_project_viewer;
+namespace PiousProjectViewer;
 
 class Program
 {

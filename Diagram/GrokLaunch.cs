@@ -1,7 +1,7 @@
 using System;
 using System.IO;
 
-namespace pious_project_viewer.Diagram;
+namespace PiousProjectViewer.Diagram;
 
 public static class GrokLaunch
 {
@@ -14,6 +14,7 @@ public static class GrokLaunch
         "coverage.cobertura.xml is created by the test command. If it is missing, run the test command. " +
         "If that command says no test project was found, say so and continue. There is no mutation file and you do not create one. " +
         "The scan command writes .pious/diagram.json. If the diagram is missing, or you just ran tests, run the scan command. " +
+        "If .pious/levels.json is present, the scan uses it to place inner parts below outer parts. Do not invent that file. " +
         "Do not edit .pious/diagram.json by hand and do not invent boxes. " +
         "When a line says you have mail, read .pious/to-agent.json, handle the oldest command, and remove it from the queue. " +
         "refresh means run the test command in the mail, then run the scan command in the mail, even if those files already exist. " +

@@ -4,9 +4,9 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media.Imaging;
 using Avalonia.VisualTree;
-using pious_project_viewer.Diagram;
+using PiousProjectViewer.Diagram;
 
-namespace pious_project_viewer.Tests;
+namespace PiousProjectViewer.Tests;
 
 public class CoverageTests
 {
@@ -144,7 +144,7 @@ public class CoverageTests
             Assert.False(string.IsNullOrWhiteSpace(found));
             Assert.Contains("mail", GrokLaunch.WakeLine);
             Assert.Contains("refresh", GrokLaunch.Rules);
-            Assert.Contains("Wait", GrokLaunch.LaunchPrompt);
+            Assert.Contains("diagram.json", GrokLaunch.LaunchPrompt);
         }
         finally
         {

@@ -6,7 +6,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media;
 
-namespace pious_project_viewer.Diagram;
+namespace PiousProjectViewer.Diagram;
 
 public sealed class DiagramView : Control
 {
@@ -274,9 +274,7 @@ public sealed class DiagramView : Control
         var x = contentW + margin * 2 <= Bounds.Width
             ? (Bounds.Width - contentW) / 2 - bounds.X * _scale
             : margin - bounds.X * _scale;
-        var y = contentH + margin * 2 <= Bounds.Height
-            ? (Bounds.Height - contentH) / 2 - bounds.Y * _scale
-            : margin - bounds.Y * _scale;
+        var y = margin - bounds.Y * _scale;
         _pan = new Vector(x, y);
     }
 

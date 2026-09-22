@@ -2,7 +2,7 @@ using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 
-namespace pious_project_viewer;
+namespace PiousProjectViewer;
 
 public partial class App : Application
 {

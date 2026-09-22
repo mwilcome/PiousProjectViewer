@@ -1,6 +1,6 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        x:Class="pious_project_viewer.ClassCardWindow"
+        x:Class="PiousProjectViewer.ClassCardWindow"
         Title="Class"
         Width="560"
         Height="640"
