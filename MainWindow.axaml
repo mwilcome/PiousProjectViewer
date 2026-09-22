@@ -1,6 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:diagram="using:pious_project_viewer.Diagram"
+        xmlns:terminal="using:Iciclecreek.Terminal"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d" d:DesignWidth="1100" d:DesignHeight="720"
@@ -8,49 +9,131 @@
         Title="pious project viewer"
         Width="1100" Height="720"
         KeyDown="OnKeyDown"
-        Background="#F4F1EC">
-    <Grid ColumnDefinitions="*,300">
-        <diagram:DiagramView x:Name="Diagram" />
-        <Border Grid.Column="1" Background="#EFEAE3" Padding="18">
-            <StackPanel Spacing="12">
-                <Button Content="Open project"
-                        HorizontalAlignment="Stretch"
-                        Click="OnOpen" />
-                <TextBlock x:Name="ProjectText"
-                           Foreground="#5C574F"
-                           TextWrapping="Wrap" />
-                <TextBlock Text="Color"
-                           FontWeight="SemiBold"
-                           Foreground="#2C2A26" />
-                <RadioButton x:Name="ComplexityMode"
-                             GroupName="paint"
-                             Content="Complexity"
-                             IsChecked="True"
-                             IsCheckedChanged="OnMode" />
-                <RadioButton x:Name="CrapMode"
-                             GroupName="paint"
-                             Content="CRAP"
-                             IsCheckedChanged="OnMode" />
-                <TextBlock x:Name="ModeNote"
-                           Foreground="#5C574F"
-                           TextWrapping="Wrap" />
-                <TextBlock x:Name="PathText"
-                           FontSize="18"
-                           FontWeight="SemiBold"
-                           Foreground="#2C2A26"
-                           TextWrapping="Wrap" />
-                <TextBlock x:Name="DetailText"
-                           Foreground="#2C2A26"
-                           TextWrapping="Wrap" />
-                <Button x:Name="BackButton"
-                        Content="Back"
-                        HorizontalAlignment="Left"
-                        Click="OnBack" />
-                <TextBlock Text="Drag to pan. Wheel to zoom. Double-click a box to open it. Esc goes back."
-                           FontSize="12"
-                           Foreground="#5C574F"
-                           TextWrapping="Wrap" />
-            </StackPanel>
+        Background="#141311"
+        Foreground="#F3EFE8">
+    <Window.Styles>
+        <Style Selector="Button.side">
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="MinHeight" Value="36" />
+            <Setter Property="Padding" Value="12,8" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Foreground" Value="#F3EFE8" />
+            <Setter Property="Background" Value="#2A2826" />
+            <Setter Property="BorderBrush" Value="#3A3834" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="FontSize" Value="13" />
+        </Style>
+        <Style Selector="Button.side:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="#35332F" />
+        </Style>
+        <Style Selector="Button.side:disabled">
+            <Setter Property="Opacity" Value="0.4" />
+        </Style>
+        <Style Selector="Button.primary">
+            <Setter Property="Background" Value="#2F6B4F" />
+            <Setter Property="BorderBrush" Value="#2F6B4F" />
+        </Style>
+        <Style Selector="TextBlock.section">
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Foreground" Value="#8E887F" />
+            <Setter Property="Margin" Value="0,16,0,0" />
+        </Style>
+        <Style Selector="ComboBox">
+            <Setter Property="MinHeight" Value="36" />
+            <Setter Property="CornerRadius" Value="8" />
+        </Style>
+    </Window.Styles>
+    <Grid ColumnDefinitions="*,300" RowDefinitions="5*,Auto,2*">
+        <diagram:DiagramView x:Name="Diagram" Grid.Row="0" Grid.Column="0" />
+        <GridSplitter Grid.Row="1"
+                      Grid.Column="0"
+                      Height="8"
+                      HorizontalAlignment="Stretch"
+                      ResizeDirection="Rows"
+                      Background="#2A2826" />
+        <Border Grid.Row="2"
+                Grid.Column="0"
+                Margin="0"
+                Padding="12,8,8,8"
+                BorderThickness="0,1,0,0"
+                BorderBrush="#2A2826"
+                Background="#10100E">
+            <terminal:TerminalControl x:Name="Companion"
+                                      FontSize="13"
+                                      Background="#10100E"
+                                      Foreground="#F3EFE8" />
+        </Border>
+        <Border Grid.Row="0" Grid.RowSpan="3" Grid.Column="1"
+                Background="#191816"
+                BorderBrush="#2A2826"
+                BorderThickness="1,0,0,0"
+                Padding="18,20">
+            <ScrollViewer>
+                <StackPanel Spacing="8">
+                    <Button Classes="side" Content="Open project" Click="OnOpen" />
+                    <TextBlock x:Name="ProjectText"
+                               FontSize="12"
+                               Foreground="#8E887F"
+                               TextWrapping="NoWrap"
+                               TextTrimming="CharacterEllipsis" />
+                    <Button x:Name="RefreshButton"
+                            Classes="side"
+                            Content="Refresh diagram"
+                            IsEnabled="False"
+                            Click="OnAskGrok"
+                            ToolTip.Tip="Start the companion first." />
+                    <TextBlock Classes="section" Text="Language" />
+                    <ComboBox x:Name="LanguageBox"
+                              HorizontalAlignment="Stretch"
+                              SelectionChanged="OnLanguage" />
+                    <TextBlock x:Name="LanguageNote"
+                               FontSize="12"
+                               Foreground="#8E887F"
+                               TextWrapping="Wrap" />
+                    <TextBlock Classes="section" Text="Companion" />
+                    <ComboBox x:Name="AgentBox"
+                              HorizontalAlignment="Stretch"
+                              SelectionChanged="OnAgent" />
+                    <Button x:Name="StartCompanionButton"
+                            Classes="side primary"
+                            Content="Start companion"
+                            Click="OnStartAgent" />
+                    <TextBlock x:Name="CompanionStatus"
+                               FontSize="12"
+                               Foreground="#8E887F"
+                               TextWrapping="Wrap"
+                               Text="Not started." />
+                    <TextBlock Classes="section" Text="Color" />
+                    <RadioButton x:Name="ComplexityMode"
+                                 GroupName="paint"
+                                 Content="Complexity"
+                                 IsChecked="True"
+                                 IsCheckedChanged="OnMode" />
+                    <RadioButton x:Name="CrapMode"
+                                 GroupName="paint"
+                                 Content="CRAP"
+                                 IsCheckedChanged="OnMode" />
+                    <TextBlock x:Name="LegendText"
+                               FontSize="12"
+                               Foreground="#8E887F"
+                               TextWrapping="Wrap" />
+                    <Border Height="1" Background="#2A2826" Margin="0,12,0,4" />
+                    <TextBlock x:Name="PathText"
+                               FontSize="15"
+                               FontWeight="SemiBold"
+                               TextWrapping="Wrap" />
+                    <TextBlock x:Name="DetailText"
+                               FontSize="12"
+                               Foreground="#C4BEB4"
+                               TextWrapping="Wrap" />
+                    <Button x:Name="BackButton"
+                            Classes="side primary"
+                            Content="Back"
+                            IsVisible="False"
+                            Click="OnBack" />
+                </StackPanel>
+            </ScrollViewer>
         </Border>
     </Grid>
 </Window>

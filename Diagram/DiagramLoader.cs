@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 
@@ -12,6 +13,11 @@ public static class DiagramLoader
         {
             PropertyNameCaseInsensitive = true
         });
-        return document ?? new DiagramDocument();
+        if (document is null)
+            return new DiagramDocument();
+        document.Nodes ??= new List<DiagramNode>();
+        foreach (var node in document.Nodes)
+            node.Members ??= new List<DiagramMember>();
+        return document;
     }
 }

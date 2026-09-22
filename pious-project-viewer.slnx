@@ -1,0 +1,6 @@
+<Solution>
+  <Folder Name="/tests/">
+    <Project Path="tests/pious-project-viewer.Tests.csproj" />
+  </Folder>
+  <Project Path="pious-project-viewer.csproj" />
+</Solution>

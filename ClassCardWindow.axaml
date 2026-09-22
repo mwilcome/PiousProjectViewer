@@ -1,0 +1,39 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="pious_project_viewer.ClassCardWindow"
+        Title="Class"
+        Width="560"
+        Height="640"
+        CanResize="True"
+        WindowStartupLocation="CenterOwner"
+        Background="#1C1B19"
+        Foreground="#F3EFE8">
+    <DockPanel Margin="16">
+        <StackPanel DockPanel.Dock="Top" Spacing="6" Margin="0,0,0,12">
+            <Button x:Name="OpenClassButton"
+                    HorizontalAlignment="Left"
+                    HorizontalContentAlignment="Left"
+                    Background="Transparent"
+                    Foreground="#F3EFE8"
+                    FontSize="20"
+                    FontWeight="SemiBold"
+                    Padding="0"
+                    Click="OnOpenClass" />
+            <TextBlock x:Name="CardMeta" FontSize="13" Foreground="#B7B1A8" TextWrapping="Wrap" />
+            <TextBlock x:Name="CardSummary" FontSize="13" Foreground="#F3EFE8" TextWrapping="Wrap" />
+            <TextBlock x:Name="CardHint"
+                       FontSize="12"
+                       Foreground="#9A948A"
+                       TextWrapping="Wrap"
+                       Text="Click a method. It opens in VS Code, and this window stays here." />
+            <TextBlock x:Name="CardColumns"
+                       Margin="8,8,0,0"
+                       FontFamily="Cascadia Mono,Consolas,monospace"
+                       FontSize="12"
+                       Foreground="#9A948A" />
+        </StackPanel>
+        <ScrollViewer>
+            <StackPanel x:Name="MemberRows" Spacing="2" />
+        </ScrollViewer>
+    </DockPanel>
+</Window>

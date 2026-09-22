@@ -10,10 +10,10 @@ namespace pious_project_viewer.Diagram;
 
 public sealed class DiagramView : Control
 {
-    static readonly IBrush CanvasBrush = Brush("#F4F1EC");
-    static readonly IBrush Ink = Brush("#2C2A26");
-    static readonly IBrush Quiet = Brush("#8A847C");
-    static readonly IBrush FrameStroke = Brush("#C4BEB4");
+    static readonly IBrush CanvasBrush = Brush("#141311");
+    static readonly IBrush Ink = Brush("#F3EFE8");
+    static readonly IBrush Quiet = Brush("#9A948A");
+    static readonly IBrush FrameStroke = Brush("#5C574E");
     static readonly IBrush Violation = Brush(Heat.Violation);
 
     readonly Stack<string> _depth = new();
@@ -29,6 +29,9 @@ public sealed class DiagramView : Control
     Vector _panAtDrag;
     bool _dragging;
     IPointer? _captured;
+    string? _hover;
+    string? _hotId;
+    Point _hoverAt;
 
     public DiagramView()
     {
@@ -37,6 +40,8 @@ public sealed class DiagramView : Control
     }
 
     public event EventHandler? ViewChanged;
+    public event EventHandler? DepthChanged;
+    public event EventHandler<DiagramNode>? OpenCard;
 
     public PaintMode Mode
     {
@@ -59,6 +64,7 @@ public sealed class DiagramView : Control
             _selectedId = null;
             _userMoved = false;
             Rebuild();
+            DepthChanged?.Invoke(this, EventArgs.Empty);
             ViewChanged?.Invoke(this, EventArgs.Empty);
         }
     }
@@ -84,10 +90,28 @@ public sealed class DiagramView : Control
         {
             var node = Selected();
             if (node is null)
-                return ModeLine() + " Red is only an arrow that points from an inner part out to an outer one.";
-            var inside = HasChildren(node.Id) ? " Double-click to open it." : "";
+                return "";
+            var inside = HasChildren(node.Id)
+                ? " Double-click to open it."
+                : node.Kind == "foreign"
+                    ? ""
+                    : FieldNames(node).Count > 0 && MethodsOf(node).Count == 0
+                        ? " Double-click to see its fields."
+                        : " Double-click for the method list.";
             return $"{Display(node.Id, node.Name)}. {NodeLine(node)}{inside}";
         }
+    }
+
+    public void ReplaceDocument(DiagramDocument document)
+    {
+        var parent = _depth.Count == 0 ? null : _depth.Peek();
+        _document = document;
+        if (parent is not null && document.Nodes.All(node => node.Id != parent))
+            _depth.Clear();
+        _selectedId = _selectedId is not null && document.Nodes.Any(node => node.Id == _selectedId) ? _selectedId : null;
+        _userMoved = true;
+        Rebuild();
+        ViewChanged?.Invoke(this, EventArgs.Empty);
     }
 
     public void Open(string id)
@@ -97,6 +121,7 @@ public sealed class DiagramView : Control
         _selectedId = null;
         _userMoved = false;
         Rebuild();
+        DepthChanged?.Invoke(this, EventArgs.Empty);
         ViewChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -108,6 +133,7 @@ public sealed class DiagramView : Control
         _selectedId = null;
         _userMoved = false;
         Rebuild();
+        DepthChanged?.Invoke(this, EventArgs.Empty);
         ViewChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -130,6 +156,7 @@ public sealed class DiagramView : Control
             foreach (var (id, box) in _scene.Boxes)
                 DrawNode(context, Node(id)!, box, id == _selectedId);
         }
+        DrawHover(context);
     }
 
     protected override Size ArrangeOverride(Size finalSize)
@@ -157,6 +184,14 @@ public sealed class DiagramView : Control
             _userMoved = false;
             _dragging = false;
             Rebuild();
+            DepthChanged?.Invoke(this, EventArgs.Empty);
+            ViewChanged?.Invoke(this, EventArgs.Empty);
+        }
+        else if (e.ClickCount == 2 && hit is not null && hit.Kind != "foreign")
+        {
+            OpenCard?.Invoke(this, hit);
+            InvalidateVisual();
+            ViewChanged?.Invoke(this, EventArgs.Empty);
         }
         else
         {
@@ -170,7 +205,10 @@ public sealed class DiagramView : Control
     {
         base.OnPointerMoved(e);
         if (!_dragging || _captured is null)
+        {
+            UpdateHover(e.GetPosition(this));
             return;
+        }
         var delta = e.GetPosition(this) - _dragStart;
         if (Math.Abs(delta.X) + Math.Abs(delta.Y) < 4)
             return;
@@ -187,6 +225,16 @@ public sealed class DiagramView : Control
         e.Pointer.Capture(null);
     }
 
+    protected override void OnPointerExited(PointerEventArgs e)
+    {
+        base.OnPointerExited(e);
+        if (_hover is null && _hotId is null)
+            return;
+        _hover = null;
+        _hotId = null;
+        InvalidateVisual();
+    }
+
     protected override void OnPointerWheelChanged(PointerWheelEventArgs e)
     {
         base.OnPointerWheelChanged(e);
@@ -200,11 +248,18 @@ public sealed class DiagramView : Control
         e.Handled = true;
     }
 
+    protected override void OnSizeChanged(SizeChangedEventArgs e)
+    {
+        base.OnSizeChanged(e);
+        CenterIfNeeded();
+    }
+
     void Rebuild()
     {
         _scene = _document is null
             ? Scene.Empty
             : DiagramScene.Build(_document, _depth.Count == 0 ? null : _depth.Peek());
+        CenterIfNeeded();
         InvalidateVisual();
     }
 
@@ -213,10 +268,16 @@ public sealed class DiagramView : Control
         if (_userMoved || Bounds.Width < 1 || _scene.Boxes.Count == 0)
             return;
         var bounds = _scene.Bounds;
-        _pan = new Vector(
-            (Bounds.Width - bounds.Width * _scale) / 2 - bounds.X * _scale,
-            (Bounds.Height - bounds.Height * _scale) / 2 - bounds.Y * _scale);
-        InvalidateVisual();
+        const double margin = 48;
+        var contentW = bounds.Width * _scale;
+        var contentH = bounds.Height * _scale;
+        var x = contentW + margin * 2 <= Bounds.Width
+            ? (Bounds.Width - contentW) / 2 - bounds.X * _scale
+            : margin - bounds.X * _scale;
+        var y = contentH + margin * 2 <= Bounds.Height
+            ? (Bounds.Height - contentH) / 2 - bounds.Y * _scale
+            : margin - bounds.Y * _scale;
+        _pan = new Vector(x, y);
     }
 
     void DrawFrame(DrawingContext context)
@@ -231,21 +292,28 @@ public sealed class DiagramView : Control
     void DrawNode(DrawingContext context, DiagramNode node, Box box, bool selected)
     {
         var rect = ToRect(box);
-        var fill = Brush(BoxPaint.Fill(node, _mode, _document?.CoverageReady == true));
-        var pen = new Pen(selected ? Ink : Quiet, selected ? 2 : 1.2);
+        var fillHex = BoxPaint.Fill(node, _mode, _document?.CoverageReady == true);
+        var unscored = fillHex == BoxPaint.CrapNeutral || fillHex == Heat.Color(null);
+        var hot = node.Id == _hotId;
+        var stroke = selected ? Ink : hot ? Brush("#E4D7B8") : unscored ? Brush("#9BB0BA") : Quiet;
+        var pen = new Pen(stroke, selected ? 2.6 : 1.4);
         if (node.Kind == "foreign")
-            context.DrawEllipse(fill, pen, rect);
+            context.DrawEllipse(Brush(fillHex), pen, rect);
         else
-            context.DrawRectangle(fill, pen, new RoundedRect(rect, 14));
-
-        var mark = node.Kind == "foreign"
-            ? new Rect(rect.Center.X + rect.Width * 0.22, rect.Center.Y - rect.Height * 0.28, 7, 7)
-            : new Rect(rect.Right - 20, rect.Y + 10, 7, 7);
-        context.DrawEllipse(null, new Pen(Quiet, 1.2), mark);
+            context.DrawRectangle(Brush(fillHex), pen, new RoundedRect(rect, 14));
+        if (selected)
+        {
+            var ring = rect.Inflate(5);
+            var ringPen = new Pen(Brush("#E6C98A"), 1.6);
+            if (node.Kind == "foreign")
+                context.DrawEllipse(null, ringPen, ring);
+            else
+                context.DrawRectangle(null, ringPen, new RoundedRect(ring, 16));
+        }
 
         var caption = Caption(node);
         DrawCentered(context, node.Name, rect, 16, Ink, -9);
-        DrawCentered(context, caption, rect, 12, Quiet, 11);
+        DrawCentered(context, caption, rect, 12, selected || hot ? Ink : Quiet, 11);
     }
 
     void DrawEdge(DrawingContext context, RoutedEdge edge)
@@ -253,12 +321,30 @@ public sealed class DiagramView : Control
         if (edge.Points.Count < 2)
             return;
         var geometry = new StreamGeometry();
+        Point tip;
+        Point before;
         using (var figure = geometry.Open())
         {
             var first = edge.Points[0];
             figure.BeginFigure(new Point(first.X, first.Y), false);
-            for (var i = 1; i < edge.Points.Count; i++)
-                figure.LineTo(new Point(edge.Points[i].X, edge.Points[i].Y));
+            if (edge.Points.Count == 2)
+            {
+                var (c1, c2) = Bow(edge.Points[0], edge.Points[1]);
+                var end = new Point(edge.Points[1].X, edge.Points[1].Y);
+                figure.CubicBezierTo(c1, c2, end);
+                tip = end;
+                before = c2;
+            }
+            else
+            {
+                var end = new Point(edge.Points[^1].X, edge.Points[^1].Y);
+                figure.CubicBezierTo(
+                    new Point(edge.Points[1].X, edge.Points[1].Y),
+                    new Point(edge.Points[^2].X, edge.Points[^2].Y),
+                    end);
+                tip = end;
+                before = new Point(edge.Points[^2].X, edge.Points[^2].Y);
+            }
             figure.EndFigure(false);
         }
         var brush = edge.Violating ? Violation : Quiet;
@@ -268,9 +354,7 @@ public sealed class DiagramView : Control
             LineJoin = PenLineJoin.Round
         };
         context.DrawGeometry(null, pen, geometry);
-        var end = edge.Points[^1];
-        var before = edge.Points[^2];
-        DrawArrowHead(context, new Point(before.X, before.Y), new Point(end.X, end.Y), brush);
+        DrawArrowHead(context, before, tip, brush);
     }
 
     static void DrawArrowHead(DrawingContext context, Point from, Point to, IBrush brush)
@@ -332,26 +416,53 @@ public sealed class DiagramView : Control
 
     DiagramNode? Node(string id) => _document?.Nodes.FirstOrDefault(node => node.Id == id);
 
-    string ModeLine() => _mode switch
-    {
-        PaintMode.Crap when _document?.SupportsCrap != true => "This scanner does not compute CRAP.",
-        PaintMode.Crap when _document?.CoverageReady != true => "CRAP is selected. No coverage report was found, so the boxes stay neutral. Tests were not run.",
-        PaintMode.Crap => "CRAP colors the boxes from complexity and coverage. Calm is μ+σ at or under 8. Hot is above 20.",
-        _ => "Complexity colors the boxes. Tests do not change this color."
-    };
-
     string NodeLine(DiagramNode node)
     {
-        var cc = node.WorstCc is int value ? value.ToString() : "none";
+        var worst = Worst(node);
         if (_mode == PaintMode.Crap && _document?.CoverageReady == true && node.CrapMu is not null && node.CrapSigma is not null)
         {
             var rollup = new CrapRollup(node.CrapMu.Value, node.CrapMax ?? node.CrapMu.Value, node.CrapSigma.Value);
-            return $"CRAP μ {rollup.Mu:0.0}, max {rollup.Max:0.0}, σ {rollup.Sigma:0.0}, {rollup.Band}. Worst method complexity {cc}.";
+            var method = worst is null
+                ? DataLine(node)
+                : $"Worst method {worst.Name}, CRAP {worst.Crap:0.0}, complexity {worst.Cc}, coverage {CoverageText(worst)}.";
+            return $"CRAP μ {rollup.Mu:0.0}, max {rollup.Max:0.0}, σ {rollup.Sigma:0.0}, {rollup.Band}. {method}";
         }
+        if (worst is null)
+            return DataLine(node);
         if (_mode == PaintMode.Crap)
-            return $"Worst method complexity {cc}. CRAP is not available until a coverage report exists.";
-        return $"Worst method complexity {cc}, {Heat.Word(node.WorstCc)}.";
+            return $"Worst method {worst.Name}, complexity {worst.Cc}. CRAP waits for a coverage report.";
+        return $"Worst method {worst.Name}, complexity {worst.Cc}, {Heat.Word(worst.Cc)}.";
     }
+
+    public string Describe(DiagramNode node) => NodeLine(node);
+
+    DiagramMember? Worst(DiagramNode node)
+    {
+        var methods = MethodsOf(node);
+        if (methods.Count == 0)
+            return null;
+        if (_mode == PaintMode.Crap && _document?.CoverageReady == true)
+            return methods.OrderByDescending(member => member.Crap ?? -1).ThenByDescending(member => member.Cc).First();
+        return methods.OrderByDescending(member => member.Cc).ThenBy(member => member.Name, StringComparer.Ordinal).First();
+    }
+
+    public string MemberLabel(DiagramMember member)
+    {
+        var mark = member.IsPublic ? "+" : "-";
+        if (member.Kind == "field")
+            return $"       field          {mark} {member.Name}";
+        if (_mode == PaintMode.Crap && _document?.CoverageReady == true)
+            return $"{member.Crap,6:0.0}   {member.Cc,2}   {CoverageText(member),4}   {mark} {member.Name}";
+        return $"{member.Cc,2}   {mark} {member.Name}";
+    }
+
+    public string ColumnHeader =>
+        _mode == PaintMode.Crap && _document?.CoverageReady == true
+            ? "  CRAP  CC  Cov  method"
+            : "CC  method";
+
+    static string CoverageText(DiagramMember member) =>
+        member.Coverage is double coverage ? coverage.ToString("0.#") + "%" : "—";
 
     string Caption(DiagramNode node)
     {
@@ -359,7 +470,24 @@ public sealed class DiagramView : Control
             return "library";
         if (_mode == PaintMode.Crap && _document?.CoverageReady == true && node.CrapMu is not null)
             return "μ " + node.CrapMu.Value.ToString("0.0");
-        return node.WorstCc is int cc ? "cc " + cc : "no methods";
+        if (node.WorstCc is int cc)
+            return "cc " + cc;
+        var fields = FieldNames(node);
+        return fields.Count == 0 ? "no methods" : fields.Count == 1 ? "1 field" : fields.Count + " fields";
+    }
+
+    static List<DiagramMember> MethodsOf(DiagramNode node) =>
+        (node.Members ?? []).Where(member => member.Kind != "field").ToList();
+
+    static List<string> FieldNames(DiagramNode node) =>
+        (node.Members ?? []).Where(member => member.Kind == "field").Select(member => member.Name).ToList();
+
+    static string DataLine(DiagramNode node)
+    {
+        var fields = FieldNames(node);
+        if (fields.Count == 0)
+            return "No methods or fields. Double-click opens the file.";
+        return "Data type. Fields: " + string.Join(", ", fields) + ".";
     }
 
     static string Display(string id, string? name)
@@ -378,6 +506,121 @@ public sealed class DiagramView : Control
     }
 
     bool HasChildren(string id) => _document?.Nodes.Any(node => node.Parent == id) == true;
+
+    void UpdateHover(Point screen)
+    {
+        var diagram = ScreenToDiagram(screen);
+        var hit = Hit(screen);
+        var hot = hit?.Id;
+        string? label = null;
+        if (hit is null)
+        {
+            var best = 12d;
+            foreach (var edge in _scene.Edges)
+            {
+                var distance = DistanceToCurve(diagram, edge.Points);
+                if (distance < best && !string.IsNullOrWhiteSpace(edge.Label))
+                {
+                    best = distance;
+                    label = edge.Label;
+                }
+            }
+        }
+        if (label == _hover && hot == _hotId)
+            return;
+        _hotId = hot;
+        _hover = label;
+        _hoverAt = new Point(screen.X + 16, screen.Y + 16);
+        InvalidateVisual();
+    }
+
+    void DrawHover(DrawingContext context)
+    {
+        if (string.IsNullOrWhiteSpace(_hover))
+            return;
+        var lines = _hover.Split('\n');
+        var formatted = lines.Select(line => Format(line, 13, Ink)).ToList();
+        var width = formatted.Max(line => line.Width) + 16;
+        var height = formatted.Sum(line => line.Height) + 12;
+        var x = Math.Min(_hoverAt.X, Math.Max(8, Bounds.Width - width - 8));
+        var y = Math.Min(_hoverAt.Y, Math.Max(8, Bounds.Height - height - 8));
+        context.FillRectangle(Brush("#1C1B19"), new Rect(x, y, width, height));
+        context.DrawRectangle(null, new Pen(Quiet, 1), new Rect(x, y, width, height));
+        var lineY = y + 6;
+        foreach (var line in formatted)
+        {
+            context.DrawText(line, new Point(x + 8, lineY));
+            lineY += line.Height;
+        }
+    }
+
+    static double DistanceToCurve(Point point, IReadOnlyList<Point2> points)
+    {
+        var samples = CurveSamples(points).ToList();
+        var best = double.MaxValue;
+        var here = new Point2(point.X, point.Y);
+        for (var i = 1; i < samples.Count; i++)
+            best = Math.Min(best, DistToSegment(here, samples[i - 1], samples[i]));
+        return best;
+    }
+
+    static IEnumerable<Point2> CurveSamples(IReadOnlyList<Point2> points)
+    {
+        if (points.Count == 2)
+        {
+            var (c1, c2) = Bow(points[0], points[1]);
+            var start = new Point(points[0].X, points[0].Y);
+            var end = new Point(points[1].X, points[1].Y);
+            for (var i = 0; i <= 16; i++)
+            {
+                var at = Cubic(start, c1, c2, end, i / 16d);
+                yield return new Point2(at.X, at.Y);
+            }
+            yield break;
+        }
+        foreach (var point in points)
+            yield return point;
+    }
+
+    static (Point C1, Point C2) Bow(Point2 start, Point2 end)
+    {
+        var dx = end.X - start.X;
+        var dy = end.Y - start.Y;
+        var length = Math.Sqrt(dx * dx + dy * dy);
+        if (length < 1)
+            return (new Point(start.X, start.Y), new Point(end.X, end.Y));
+        var ux = dx / length;
+        var uy = dy / length;
+        var bow = Math.Min(28, length * 0.2);
+        return (
+            new Point(start.X + ux * length * 0.35 - uy * bow, start.Y + uy * length * 0.35 + ux * bow),
+            new Point(end.X - ux * length * 0.35 - uy * bow, end.Y - uy * length * 0.35 + ux * bow));
+    }
+
+    static Point Cubic(Point start, Point c1, Point c2, Point end, double t)
+    {
+        var u = 1 - t;
+        var a = u * u * u;
+        var b = 3 * u * u * t;
+        var c = 3 * u * t * t;
+        var d = t * t * t;
+        return new Point(
+            a * start.X + b * c1.X + c * c2.X + d * end.X,
+            a * start.Y + b * c1.Y + c * c2.Y + d * end.Y);
+    }
+
+    static double DistToSegment(Point2 point, Point2 a, Point2 b)
+    {
+        var abx = b.X - a.X;
+        var aby = b.Y - a.Y;
+        var length = abx * abx + aby * aby;
+        if (length < 1)
+            return Math.Sqrt((point.X - a.X) * (point.X - a.X) + (point.Y - a.Y) * (point.Y - a.Y));
+        var t = Math.Clamp(((point.X - a.X) * abx + (point.Y - a.Y) * aby) / length, 0, 1);
+        var dx = point.X - (a.X + abx * t);
+        var dy = point.Y - (a.Y + aby * t);
+        return Math.Sqrt(dx * dx + dy * dy);
+    }
 
     static SolidColorBrush Brush(string hex) => new(Color.Parse(hex));
 }

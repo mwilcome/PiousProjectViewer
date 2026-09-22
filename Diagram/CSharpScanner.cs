@@ -16,6 +16,20 @@ public sealed class CSharpScanner : ILanguageScanner
 
     public bool CanScan(string folder) => FindProjects(folder).Count > 0;
 
+    public string TestCommand(string folder)
+    {
+        var solution = FindSolutions(folder);
+        if (solution.Count == 1)
+            return DotNetTest(Path.GetRelativePath(folder, solution[0]));
+        var tests = FindTestProjects(folder);
+        if (tests.Count == 0)
+            return "echo No test project found.";
+        return string.Join(" && ", tests.Select(path => DotNetTest(Path.GetRelativePath(folder, path))));
+    }
+
+    static string DotNetTest(string relativePath) =>
+        "dotnet test \"" + relativePath + "\" --collect:\"XPlat Code Coverage\"";
+
     public DiagramDocument Scan(string folder)
     {
         var projects = FindProjects(folder);
@@ -54,6 +68,27 @@ public sealed class CSharpScanner : ILanguageScanner
             dir = dir.Parent;
         }
         return null;
+    }
+
+    public static List<string> FindSolutions(string folder)
+    {
+        if (!Directory.Exists(folder))
+            return [];
+        return Directory.EnumerateFiles(folder, "*.sln*", SearchOption.TopDirectoryOnly)
+            .Where(path => path.EndsWith(".sln", StringComparison.OrdinalIgnoreCase)
+                || path.EndsWith(".slnx", StringComparison.OrdinalIgnoreCase))
+            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    public static List<string> FindTestProjects(string folder)
+    {
+        if (!Directory.Exists(folder))
+            return [];
+        return Directory.EnumerateFiles(folder, "*.csproj", SearchOption.AllDirectories)
+            .Where(path => IsTestProject(Path.GetFileName(path)) && !IsBuildOutput(folder, path))
+            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 
     public static List<string> FindProjects(string folder)
@@ -134,6 +169,13 @@ public sealed class CSharpScanner : ILanguageScanner
         fileName.Contains(".Tests.", StringComparison.OrdinalIgnoreCase)
         || fileName.EndsWith(".Tests.csproj", StringComparison.OrdinalIgnoreCase);
 
+    static bool IsBuildOutput(string root, string path)
+    {
+        var relative = Path.GetRelativePath(root, path);
+        return relative.StartsWith("bin" + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+            || relative.StartsWith("obj" + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+    }
+
     static bool IsGeneratedTree(string root, string path)
     {
         var relative = Path.GetRelativePath(root, path);
@@ -151,13 +193,15 @@ public sealed class CSharpScanner : ILanguageScanner
                 continue;
             var space = NamespaceOf(type);
             var methods = MethodSpans(type);
+            var logic = methods.Where(method => method.Kind != "field").ToList();
             yield return new TypeFact
             {
                 Id = "type:" + space + "." + type.Identifier.ValueText,
                 Name = type.Identifier.ValueText,
                 NamespaceId = "ns:" + space,
                 File = path,
-                WorstCc = methods.Count == 0 ? 0 : methods.Max(method => method.Cc),
+                Line = type.GetLocation().GetLineSpan().StartLinePosition.Line + 1,
+                WorstCc = logic.Count == 0 ? 0 : logic.Max(method => method.Cc),
                 UsesAvalonia = FileUsesAvalonia(type) || UsesAvalonia(type),
                 Declaration = type,
                 Methods = methods
@@ -173,10 +217,84 @@ public sealed class CSharpScanner : ILanguageScanner
             if (member is not (MethodDeclarationSyntax or ConstructorDeclarationSyntax or PropertyDeclarationSyntax))
                 continue;
             var line = member.GetLocation().GetLineSpan();
-            spans.Add(new MethodSpan(line.StartLinePosition.Line + 1, line.EndLinePosition.Line + 1, Complexity(member)));
+            spans.Add(new MethodSpan
+            {
+                Name = MemberName(member, type.Identifier.ValueText),
+                StartLine = line.StartLinePosition.Line + 1,
+                EndLine = line.EndLinePosition.Line + 1,
+                Cc = Complexity(member),
+                IsPublic = member.Modifiers.Any(token => token.IsKind(SyntaxKind.PublicKeyword)),
+                Kind = "method"
+            });
         }
+        AddFields(type, spans);
         return spans;
     }
+
+    static void AddFields(TypeDeclarationSyntax type, List<MethodSpan> spans)
+    {
+        if (type is RecordDeclarationSyntax record && record.ParameterList is not null)
+        {
+            foreach (var parameter in record.ParameterList.Parameters)
+            {
+                if (parameter.Identifier.ValueText.Length == 0)
+                    continue;
+                var line = parameter.GetLocation().GetLineSpan();
+                var hidden = parameter.Modifiers.Any(token =>
+                    token.IsKind(SyntaxKind.PrivateKeyword)
+                    || token.IsKind(SyntaxKind.InternalKeyword)
+                    || token.IsKind(SyntaxKind.ProtectedKeyword));
+                spans.Add(new MethodSpan
+                {
+                    Name = parameter.Identifier.ValueText,
+                    StartLine = line.StartLinePosition.Line + 1,
+                    EndLine = line.EndLinePosition.Line + 1,
+                    Cc = 0,
+                    IsPublic = !hidden,
+                    Kind = "field"
+                });
+            }
+        }
+        foreach (var field in type.Members.OfType<FieldDeclarationSyntax>())
+        {
+            var isPublic = field.Modifiers.Any(token => token.IsKind(SyntaxKind.PublicKeyword));
+            foreach (var variable in field.Declaration.Variables)
+            {
+                var line = variable.GetLocation().GetLineSpan();
+                spans.Add(new MethodSpan
+                {
+                    Name = variable.Identifier.ValueText,
+                    StartLine = line.StartLinePosition.Line + 1,
+                    EndLine = line.EndLinePosition.Line + 1,
+                    Cc = 0,
+                    IsPublic = isPublic,
+                    Kind = "field"
+                });
+            }
+        }
+    }
+
+    static string MemberName(MemberDeclarationSyntax member, string typeName) => member switch
+    {
+        MethodDeclarationSyntax method => method.Identifier.ValueText + Parameters(method.ParameterList),
+        ConstructorDeclarationSyntax constructor => typeName + Parameters(constructor.ParameterList),
+        PropertyDeclarationSyntax property => property.Identifier.ValueText,
+        _ => "member"
+    };
+
+    static string Parameters(ParameterListSyntax list) =>
+        "(" + string.Join(", ", list.Parameters.Select(parameter => TypeName(parameter.Type))) + ")";
+
+    static string TypeName(TypeSyntax? syntax) => syntax switch
+    {
+        PredefinedTypeSyntax predefined => predefined.Keyword.ValueText,
+        IdentifierNameSyntax identifier => identifier.Identifier.ValueText,
+        GenericNameSyntax generic => generic.Identifier.ValueText + "<" + string.Join(", ", generic.TypeArgumentList.Arguments.Select(TypeName)) + ">",
+        NullableTypeSyntax nullable => TypeName(nullable.ElementType) + "?",
+        ArrayTypeSyntax array => TypeName(array.ElementType) + "[]",
+        QualifiedNameSyntax qualified => TypeName(qualified.Right),
+        _ => syntax?.ToString() ?? "?"
+    };
 
     static string NamespaceOf(SyntaxNode node)
     {
@@ -258,10 +376,13 @@ public sealed class CSharpScanner : ILanguageScanner
     {
         foreach (var type in types)
         {
-            var scores = type.Methods
-                .Select(method => CrapMath.Score(method.Cc, coverage.Percent(type.File, method.StartLine, method.EndLine)))
-                .ToList();
-            var rollup = CrapMath.Rollup(scores);
+            var logic = type.Methods.Where(method => method.Kind != "field").ToList();
+            foreach (var method in logic)
+            {
+                method.Coverage = coverage.Percent(type.File, method.StartLine, method.EndLine);
+                method.Crap = CrapMath.Score(method.Cc, method.Coverage);
+            }
+            var rollup = CrapMath.Rollup(logic.Select(method => method.Crap));
             if (rollup is null)
                 continue;
             type.CrapMu = rollup.Value.Mu;
@@ -329,14 +450,29 @@ public sealed class CSharpScanner : ILanguageScanner
                 Name = type.Name,
                 Parent = type.NamespaceId,
                 Kind = "package",
+                File = type.File,
+                Line = type.Line,
                 WorstCc = type.WorstCc == 0 ? null : type.WorstCc,
                 CrapMu = type.CrapMu,
                 CrapMax = type.CrapMax,
                 CrapSigma = type.CrapSigma,
-                Rank = 0
+                Rank = 0,
+                Members = type.Methods.Select(method => new DiagramMember
+                {
+                    Name = method.Name,
+                    Line = method.StartLine,
+                    Cc = method.Cc,
+                    Coverage = Round1(method.Coverage),
+                    Crap = Round1(method.Crap),
+                    IsPublic = method.IsPublic,
+                    Kind = method.Kind
+                }).ToList()
             });
         }
     }
+
+    static double? Round1(double? value) =>
+        value is null ? null : Math.Round(value.Value, 1, MidpointRounding.AwayFromZero);
 
     static void AddEdges(DiagramDocument document, List<TypeFact> types)
     {
@@ -370,6 +506,7 @@ public sealed class CSharpScanner : ILanguageScanner
         public string Name { get; init; } = "";
         public string NamespaceId { get; init; } = "";
         public string File { get; init; } = "";
+        public int Line { get; init; }
         public int WorstCc { get; init; }
         public double? CrapMu { get; set; }
         public double? CrapMax { get; set; }
@@ -380,5 +517,15 @@ public sealed class CSharpScanner : ILanguageScanner
         public HashSet<string> ProjectRefs { get; } = new();
     }
 
-    readonly record struct MethodSpan(int StartLine, int EndLine, int Cc);
+    sealed class MethodSpan
+    {
+        public string Name { get; init; } = "";
+        public int StartLine { get; init; }
+        public int EndLine { get; init; }
+        public int Cc { get; init; }
+        public bool IsPublic { get; init; }
+        public string Kind { get; init; } = "method";
+        public double? Coverage { get; set; }
+        public double? Crap { get; set; }
+    }
 }

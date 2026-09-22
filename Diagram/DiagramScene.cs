@@ -14,7 +14,7 @@ public readonly record struct Box(double X, double Y, double Width, double Heigh
 
 public readonly record struct Point2(double X, double Y);
 
-public sealed record RoutedEdge(string From, string To, bool Violating, IReadOnlyList<Point2> Points);
+public sealed record RoutedEdge(string From, string To, bool Violating, IReadOnlyList<Point2> Points, string Label);
 
 public sealed record Scene(
     Box Frame,
@@ -121,22 +121,42 @@ public static class DiagramScene
 
     static List<RoutedEdge> Routes(DiagramDocument document, string? parent, Dictionary<string, Box> boxes)
     {
-        var seen = new HashSet<string>();
-        var routes = new List<RoutedEdge>();
+        var groups = new Dictionary<(string From, string To), List<DiagramEdge>>();
         foreach (var edge in document.Edges)
         {
             var from = VisibleEnd(document, parent, edge.From, boxes);
             var to = VisibleEnd(document, parent, edge.To, boxes);
-            if (from is null || to is null || from == to || !seen.Add(from + ">" + to))
+            if (from is null || to is null || from == to)
                 continue;
-            var violating = document.Edges.Any(candidate =>
-                candidate.Violating
-                && VisibleEnd(document, parent, candidate.From, boxes) == from
-                && VisibleEnd(document, parent, candidate.To, boxes) == to);
-            routes.Add(new RoutedEdge(from, to, violating, Points(boxes[from], boxes[to], violating)));
+            var key = (from, to);
+            if (!groups.TryGetValue(key, out var list))
+            {
+                list = [];
+                groups[key] = list;
+            }
+            list.Add(edge);
+        }
+
+        var routes = new List<RoutedEdge>();
+        foreach (var (key, list) in groups)
+        {
+            var obstacles = boxes.Where(pair => pair.Key != key.From && pair.Key != key.To).Select(pair => pair.Value).ToList();
+            var violating = list.Any(edge => edge.Violating);
+            var pairs = list
+                .Select(edge => ShortName(document, edge.From) + " → " + ShortName(document, edge.To))
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(text => text, StringComparer.Ordinal)
+                .ToList();
+            var label = string.Join("\n", pairs.Take(12));
+            if (pairs.Count > 12)
+                label += "\n+" + (pairs.Count - 12) + " more";
+            routes.Add(new RoutedEdge(key.From, key.To, violating, Points(boxes[key.From], boxes[key.To], violating, obstacles), label));
         }
         return routes;
     }
+
+    static string ShortName(DiagramDocument document, string id) =>
+        document.Nodes.FirstOrDefault(node => node.Id == id)?.Name ?? id;
 
     static string? VisibleStructural(DiagramDocument document, string id, HashSet<string> structuralIds)
     {
@@ -170,7 +190,7 @@ public static class DiagramScene
         }
     }
 
-    public static IReadOnlyList<Point2> Points(Box from, Box to, bool violating)
+    public static IReadOnlyList<Point2> Points(Box from, Box to, bool violating, IReadOnlyList<Box>? obstacles = null)
     {
         if (violating)
         {
@@ -184,18 +204,97 @@ public static class DiagramScene
             ];
         }
 
+        var (start, end) = Ports(from, to);
+        var blocks = obstacles ?? [];
+        if (!blocks.Any(box => SegmentHits(start, end, box)))
+            return [start, end];
+
+        var hits = blocks.Where(box => SegmentHits(start, end, box)).ToList();
+        var minX = hits.Min(box => box.X) - 28;
+        var maxX = hits.Max(box => box.Right) + 28;
+        var minY = hits.Min(box => box.Y) - 28;
+        var maxY = hits.Max(box => box.Bottom) + 28;
+        Point2[][] candidates =
+        [
+            [start, new Point2(start.X, minY), new Point2(end.X, minY), end],
+            [start, new Point2(start.X, maxY), new Point2(end.X, maxY), end],
+            [start, new Point2(minX, start.Y), new Point2(minX, end.Y), end],
+            [start, new Point2(maxX, start.Y), new Point2(maxX, end.Y), end]
+        ];
+        return candidates
+            .OrderBy(path => PathHits(path, blocks))
+            .ThenBy(path => PathLength(path))
+            .First();
+    }
+
+    static (Point2 Start, Point2 End) Ports(Box from, Box to)
+    {
         var dx = to.CenterX - from.CenterX;
         var dy = to.CenterY - from.CenterY;
-        if (Math.Abs(dx) > Math.Abs(dy))
+        if (Math.Abs(dx) >= Math.Abs(dy))
         {
-            var start = dx >= 0 ? new Point2(from.Right, from.CenterY) : new Point2(from.X, from.CenterY);
-            var end = dx >= 0 ? new Point2(to.X, to.CenterY) : new Point2(to.Right, to.CenterY);
-            return [start, end];
+            return dx >= 0
+                ? (new Point2(from.Right, from.CenterY), new Point2(to.X, to.CenterY))
+                : (new Point2(from.X, from.CenterY), new Point2(to.Right, to.CenterY));
         }
-
-        var down = dy >= 0;
-        var top = down ? new Point2(from.CenterX, from.Bottom) : new Point2(from.CenterX, from.Y);
-        var bottom = down ? new Point2(to.CenterX, to.Y) : new Point2(to.CenterX, to.Bottom);
-        return [top, bottom];
+        return dy >= 0
+            ? (new Point2(from.CenterX, from.Bottom), new Point2(to.CenterX, to.Y))
+            : (new Point2(from.CenterX, from.Y), new Point2(to.CenterX, to.Bottom));
     }
+
+    static int PathHits(IReadOnlyList<Point2> path, IReadOnlyList<Box> blocks)
+    {
+        var count = 0;
+        for (var i = 1; i < path.Count; i++)
+            count += blocks.Count(box => SegmentHits(path[i - 1], path[i], box));
+        return count;
+    }
+
+    static double PathLength(IReadOnlyList<Point2> path)
+    {
+        var length = 0d;
+        for (var i = 1; i < path.Count; i++)
+        {
+            var dx = path[i].X - path[i - 1].X;
+            var dy = path[i].Y - path[i - 1].Y;
+            length += Math.Sqrt(dx * dx + dy * dy);
+        }
+        return length;
+    }
+
+    static bool SegmentHits(Point2 a, Point2 b, Box box)
+    {
+        var inflated = new Box(box.X - 8, box.Y - 8, box.Width + 16, box.Height + 16);
+        if (Inside(a, inflated) || Inside(b, inflated))
+            return true;
+        Point2[] corners =
+        [
+            new(inflated.X, inflated.Y),
+            new(inflated.Right, inflated.Y),
+            new(inflated.Right, inflated.Bottom),
+            new(inflated.X, inflated.Bottom)
+        ];
+        for (var i = 0; i < 4; i++)
+        {
+            if (SegmentsCross(a, b, corners[i], corners[(i + 1) % 4]))
+                return true;
+        }
+        return false;
+    }
+
+    static bool Inside(Point2 point, Box box) =>
+        point.X >= box.X && point.X <= box.Right && point.Y >= box.Y && point.Y <= box.Bottom;
+
+    static bool SegmentsCross(Point2 a, Point2 b, Point2 c, Point2 d)
+    {
+        var d1 = Cross(c, d, a);
+        var d2 = Cross(c, d, b);
+        var d3 = Cross(a, b, c);
+        var d4 = Cross(a, b, d);
+        return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0))
+            && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0));
+    }
+
+    static double Cross(Point2 origin, Point2 end, Point2 point) =>
+        (end.X - origin.X) * (point.Y - origin.Y) - (end.Y - origin.Y) * (point.X - origin.X);
 }

@@ -1,3 +1,4 @@
+using System.Reflection;
 using pious_project_viewer.Diagram;
 
 namespace pious_project_viewer.Tests;
@@ -85,12 +86,19 @@ public class HeatTests
     [Fact]
     public void BandsMeetThePublishedLines()
     {
-        Assert.Equal("cool", Heat.Word(5));
-        Assert.Equal("warm", Heat.Word(6));
-        Assert.Equal("warm", Heat.Word(10));
-        Assert.Equal("hot", Heat.Word(11));
-        Assert.Equal("hot", Heat.Word(20));
-        Assert.Equal("hottest", Heat.Word(21));
+        Assert.Equal("very good", Heat.Word(1));
+        Assert.Equal("very good", Heat.Word(4));
+        Assert.Equal("good", Heat.Word(5));
+        Assert.Equal("good", Heat.Word(7));
+        Assert.Equal("med", Heat.Word(8));
+        Assert.Equal("med", Heat.Word(10));
+        Assert.Equal("bad", Heat.Word(11));
+        Assert.Equal("bad", Heat.Word(20));
+        Assert.Equal("very bad", Heat.Word(21));
+        Assert.NotEqual(Heat.Color(4), Heat.Color(7));
+        Assert.NotEqual(Heat.Color(7), Heat.Color(10));
+        Assert.NotEqual(Heat.Color(10), Heat.Color(20));
+        Assert.NotEqual(Heat.Color(20), Heat.Color(21));
     }
 }
 
@@ -129,7 +137,10 @@ public class DiagramSceneTests
     [Fact]
     public void ScannerReadsThisProjectAndSkipsTheTestProject()
     {
-        var project = CSharpScanner.FindAppProject(AppContext.BaseDirectory);
+        var root = Assembly.GetExecutingAssembly()
+            .GetCustomAttributes<AssemblyMetadataAttribute>()
+            .First(attribute => attribute.Key == "RepoRoot").Value!;
+        var project = CSharpScanner.FindAppProject(root);
         Assert.NotNull(project);
         var scanner = new CSharpScanner();
         Assert.True(scanner.SupportsComplexity);
@@ -138,9 +149,13 @@ public class DiagramSceneTests
         Assert.Contains(document.Nodes, node => node.Id == "ns:pious_project_viewer.Diagram");
         Assert.DoesNotContain(document.Nodes, node => node.Name == "CrapMathTests");
         Assert.DoesNotContain(document.Nodes, node => node.Name == "TypeFact");
-        Assert.Contains(document.Nodes, node => node.Name == "DiagramView" && node.WorstCc > 1);
+        Assert.Contains(document.Nodes, node => node.Name == "DiagramView" && node.WorstCc > 1 && node.File != null && node.File.EndsWith("DiagramView.cs") && node.Line > 0);
         Assert.Contains(document.Edges, edge => edge.To == "foreign:Avalonia");
-        Assert.False(document.CoverageReady);
+        Assert.True(document.CoverageReady);
+        Assert.Contains(document.Nodes, node => node.Name == "CrapMath" && node.CrapMu is not null);
+        var testCommand = ScanCommand.TestCommandFor(root);
+        Assert.Contains("dotnet test", testCommand);
+        Assert.Contains(".sln", testCommand);
     }
 
     [Fact]
@@ -222,6 +237,45 @@ public class DiagramSceneTests
             Assert.True(document.CoverageReady);
             Assert.NotNull(alpha.CrapMu);
             Assert.Equal("calm", new CrapRollup(alpha.CrapMu!.Value, alpha.CrapMax!.Value, alpha.CrapSigma!.Value).Band);
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
+    [Fact]
+    public void PublishWritesOnceUntilThePictureChanges()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "pious-pub-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var first = new DiagramDocument
+            {
+                Title = "Demo",
+                Nodes = [new DiagramNode { Id = "a", Name = "A", WorstCc = 2 }]
+            };
+            Assert.True(DiagramPublisher.Publish(dir, first));
+            Assert.False(DiagramPublisher.Publish(dir, first));
+            first.Nodes[0].WorstCc = 9;
+            Assert.True(DiagramPublisher.Publish(dir, first));
+            DiagramPublisher.PostUpdated(dir);
+            var mail = File.ReadAllText(Path.Combine(dir, ".pious", "to-agent.json"));
+            Assert.Contains("diagram-updated", mail);
+            Assert.Contains(".pious/diagram.json", mail);
+            DiagramPublisher.PostContext(dir, new DiagramNode
+            {
+                Id = "type:Demo.Alpha",
+                Name = "Alpha",
+                Kind = "package",
+                File = "Types.cs",
+                Line = 4
+            });
+            mail = File.ReadAllText(Path.Combine(dir, ".pious", "to-agent.json"));
+            Assert.Contains("\"op\": \"context\"", mail);
+            Assert.Contains("Alpha", mail);
+            Assert.Contains("Types.cs", mail);
         }
         finally
         {
