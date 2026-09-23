@@ -36,12 +36,15 @@ process.stdout.write(JSON.stringify({ types }));
 function readClass(node, sf, file, text) {
   const role = roleOf(node);
   const members = [];
+  const injected = [];
   for (const member of node.members) {
     if (ts.isConstructorDeclaration(member)) {
       members.push(methodMember("constructor()", member, sf, true));
+      for (const param of member.parameters) noteInjected(injected, param.type, param.initializer);
     } else if (ts.isMethodDeclaration(member) && member.name && ts.isIdentifier(member.name)) {
       members.push(methodMember(member.name.text + "()", member, sf, !hasModifier(member, ts.SyntaxKind.PrivateKeyword) && !hasModifier(member, ts.SyntaxKind.ProtectedKeyword)));
     } else if ((ts.isPropertyDeclaration(member) || ts.isGetAccessor(member) || ts.isSetAccessor(member)) && member.name && ts.isIdentifier(member.name)) {
+      if (ts.isPropertyDeclaration(member)) noteInjected(injected, null, member.initializer);
       members.push({
         name: member.name.text,
         line: lineOf(member, sf),
@@ -62,9 +65,45 @@ function readClass(node, sf, file, text) {
     file,
     line: lineOf(node, sf),
     role,
+    selector: selectorOf(node),
+    injected,
     imports,
     members
   };
+}
+
+function noteInjected(names, typeNode, initializer) {
+  const fromType = typeRefName(typeNode);
+  if (fromType && !names.includes(fromType)) names.push(fromType);
+  const fromCall = injectName(initializer);
+  if (fromCall && !names.includes(fromCall)) names.push(fromCall);
+}
+
+function typeRefName(typeNode) {
+  if (!typeNode || !ts.isTypeReferenceNode(typeNode) || !ts.isIdentifier(typeNode.typeName)) return "";
+  return typeNode.typeName.text;
+}
+
+function injectName(expr) {
+  if (!expr || !ts.isCallExpression(expr) || !ts.isIdentifier(expr.expression) || expr.expression.text !== "inject") return "";
+  const arg = expr.arguments[0];
+  return arg && ts.isIdentifier(arg) ? arg.text : "";
+}
+
+function selectorOf(node) {
+  const decorators = ts.canHaveDecorators(node) ? ts.getDecorators(node) : undefined;
+  if (!decorators) return "";
+  for (const decorator of decorators) {
+    if (!ts.isCallExpression(decorator.expression)) continue;
+    const arg = decorator.expression.arguments[0];
+    if (!arg || !ts.isObjectLiteralExpression(arg)) continue;
+    for (const prop of arg.properties) {
+      if (!ts.isPropertyAssignment(prop) || prop.name.getText() !== "selector") continue;
+      if (ts.isStringLiteral(prop.initializer) || ts.isNoSubstitutionTemplateLiteral(prop.initializer))
+        return prop.initializer.text;
+    }
+  }
+  return "";
 }
 
 function methodMember(name, node, sf, isPublic) {

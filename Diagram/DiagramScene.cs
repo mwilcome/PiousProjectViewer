@@ -156,9 +156,7 @@ public static class DiagramScene
             .ToList();
         if (methods.Count == 0)
             return (node.Members ?? []).Where(member => member.Kind == "field").Take(8).ToList();
-        return methods
-            .Concat((node.Members ?? []).Where(member => member.Kind is "html" or "scss"))
-            .ToList();
+        return methods;
     }
 
     public static double WidthFor(DiagramNode node)

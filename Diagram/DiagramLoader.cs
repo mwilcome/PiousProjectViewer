@@ -18,6 +18,7 @@ public static class DiagramLoader
         document.Nodes ??= new List<DiagramNode>();
         foreach (var node in document.Nodes)
             node.Members ??= new List<DiagramMember>();
+        MetricApply.AssumeUncovered(document);
         return document;
     }
 }

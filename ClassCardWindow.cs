@@ -27,6 +27,7 @@ public sealed class ClassCardWindow : Window
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         Background = Brush("#12141A");
         Foreground = Brush(Paper);
+        FontFamily = new FontFamily("fonts:Inter#Inter");
         KeyDown += (_, e) =>
         {
             if (e.Key != Key.Escape)
@@ -262,7 +263,9 @@ public sealed class ClassCardWindow : Window
             HorizontalAlignment = HorizontalAlignment.Stretch,
             TextAlignment = align,
             Margin = new Avalonia.Thickness(align == TextAlignment.Left ? 0 : 4, row == 0 ? 0 : 2, align == TextAlignment.Right ? 8 : 12, 0),
-            FontFamily = mono ? new FontFamily("Cascadia Mono,Consolas,monospace") : FontFamily.Default
+            FontFamily = mono
+                ? new FontFamily("Cascadia Mono, Cascadia Code, Consolas, monospace")
+                : new FontFamily("fonts:Inter#Inter")
         };
         Grid.SetColumn(block, column);
         Grid.SetRow(block, row);

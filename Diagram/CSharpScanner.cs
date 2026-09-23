@@ -14,7 +14,11 @@ public sealed class CSharpScanner : ILanguageScanner
     public bool SupportsComplexity => true;
     public bool SupportsCrap => true;
 
-    public bool CanScan(string folder) => FindProjects(folder).Count > 0;
+    public bool CanScan(string folder) =>
+        Directory.Exists(folder)
+        && (Directory.EnumerateFiles(folder, "*.sln").Any()
+            || Directory.EnumerateFiles(folder, "*.slnx").Any()
+            || Directory.EnumerateFiles(folder, "*.csproj").Any());
 
     public string TestCommand(string folder)
     {
@@ -67,6 +71,7 @@ public sealed class CSharpScanner : ILanguageScanner
         foreach (var project in projects)
             Graft(combined, ScanProject(project));
         combined.CoverageReady = combined.Nodes.Any(node => node.CrapMu is not null);
+        MetricApply.FillParents(combined);
         combined.MutationReady = combined.Nodes.Any(node => node.Members.Any(member => member.Killed is not null));
         LevelRank.Apply(combined, folder);
         return combined;
@@ -146,6 +151,8 @@ public sealed class CSharpScanner : ILanguageScanner
         AddNamespaces(document, types);
         AddTypes(document, types);
         AddEdges(document, types);
+        if (coverage is null)
+            MetricApply.AssumeUncovered(document);
         return document;
     }
 

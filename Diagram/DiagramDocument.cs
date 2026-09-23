@@ -61,6 +61,8 @@ public sealed class DiagramNode
     public string Name { get; set; } = "";
     public string? Parent { get; set; }
     public string Kind { get; set; } = "package";
+    public string? Role { get; set; }
+    public string? Selector { get; set; }
     public string? File { get; set; }
     public int? Line { get; set; }
     public int? WorstCc { get; set; }

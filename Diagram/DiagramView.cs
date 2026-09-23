@@ -10,6 +10,7 @@ namespace PiousProjectViewer.Diagram;
 
 public sealed class DiagramView : Control
 {
+    static readonly FontFamily UiFont = new("fonts:Inter#Inter");
     static readonly IBrush CanvasBrush = Brush("#0E1014");
     static readonly IBrush Ink = Brush("#F4F6F8");
     static readonly IBrush Quiet = Brush("#8B93A1");
@@ -157,8 +158,13 @@ public sealed class DiagramView : Control
         context.FillRectangle(CanvasBrush, new Rect(Bounds.Size));
         if (_document is null || _scene.Boxes.Count == 0)
         {
+            var title = _document?.Title ?? "";
             var note = string.IsNullOrWhiteSpace(_document?.Note) ? "Open a project folder to scan it." : _document.Note;
-            DrawText(context, note, 16, Ink, new Point(24, 24));
+            var y = 24d;
+            var width = Math.Max(40, Bounds.Width - 48);
+            if (!string.IsNullOrWhiteSpace(title))
+                y += DrawWrapped(context, title, 18, Ink, new Point(24, y), width, FontWeight.SemiBold) + 12;
+            DrawWrapped(context, note, 15, Quiet, new Point(24, y), width);
             return;
         }
 
@@ -175,6 +181,20 @@ public sealed class DiagramView : Control
                 DrawNode(context, Node(id)!, box, id == _selectedId);
         }
         DrawHover(context);
+        DrawProposalBanner(context);
+    }
+
+    void DrawProposalBanner(DrawingContext context)
+    {
+        if (_document?.Title != "Proposal" || string.IsNullOrWhiteSpace(_document.Note) || _scene.Boxes.Count == 0)
+            return;
+        var width = Math.Max(80, Bounds.Width - 24);
+        var formatted = Format(_document.Note, 14, Brush("#F0C14A"), FontWeight.SemiBold);
+        formatted.MaxTextWidth = Math.Max(40, width - 20);
+        var bar = new Rect(12, 12, width, formatted.Height + 16);
+        context.FillRectangle(Brush("#3A2E12"), bar);
+        context.DrawRectangle(null, new Pen(Brush("#F0C14A"), 1), bar);
+        context.DrawText(formatted, new Point(22, 20));
     }
 
     protected override Size ArrangeOverride(Size finalSize)
@@ -526,11 +546,19 @@ public sealed class DiagramView : Control
         context.DrawText(Format(text, size, brush, weight), origin);
     }
 
+    static double DrawWrapped(DrawingContext context, string text, double size, IBrush brush, Point origin, double width, FontWeight weight = FontWeight.Normal)
+    {
+        var formatted = Format(text, size, brush, weight);
+        formatted.MaxTextWidth = width;
+        context.DrawText(formatted, origin);
+        return formatted.Height;
+    }
+
     static FormattedText Format(string text, double size, IBrush brush, FontWeight weight = FontWeight.Normal) => new(
         text,
         System.Globalization.CultureInfo.CurrentCulture,
         FlowDirection.LeftToRight,
-        new Typeface(FontFamily.Default, FontStyle.Normal, weight),
+        new Typeface(UiFont, FontStyle.Normal, weight),
         size,
         brush);
 
@@ -664,13 +692,29 @@ public sealed class DiagramView : Control
     {
         if (node.Kind == "foreign")
             return "library";
-        if (_mode == PaintMode.Crap && _document?.CoverageReady == true && node.CrapMu is not null)
-            return "μ " + node.CrapMu.Value.ToString("0.0");
-        if (node.WorstCc is int cc)
-            return WithKinds("cc " + cc, node);
+        var body = _mode == PaintMode.Crap && _document?.CoverageReady == true && node.CrapMu is not null
+            ? "μ " + node.CrapMu.Value.ToString("0.0")
+            : node.WorstCc is int cc
+                ? WithKinds("cc " + cc, node)
+                : WithKinds(FieldCaption(node), node);
+        var role = RoleWord(node.Role);
+        return role.Length == 0 ? body : role + "  " + body;
+    }
+
+    static string RoleWord(string? role) => role switch
+    {
+        "component" => "component",
+        "injectable" => "service",
+        "directive" => "directive",
+        "pipe" => "pipe",
+        "ngmodule" => "module",
+        _ => ""
+    };
+
+    static string FieldCaption(DiagramNode node)
+    {
         var fields = FieldNames(node);
-        var plain = fields.Count == 0 ? "no methods" : fields.Count == 1 ? "1 field" : fields.Count + " fields";
-        return WithKinds(plain, node);
+        return fields.Count == 0 ? "no methods" : fields.Count == 1 ? "1 field" : fields.Count + " fields";
     }
 
     string WithKinds(string caption, DiagramNode node)

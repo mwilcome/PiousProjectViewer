@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
 using System.Xml.Linq;
 
 namespace PiousProjectViewer.Diagram;
@@ -14,19 +15,87 @@ public sealed class CoverageReport
     {
         if (!Directory.Exists(folder))
             return null;
+        var named = ReadNamed(folder);
+        if (named is not null)
+            return named;
         var file = new[] { "coverage.cobertura.xml", "lcov.info", "jacoco.xml" }
             .SelectMany(name => Directory.EnumerateFiles(folder, name, SearchOption.AllDirectories))
             .Select(path => new FileInfo(path))
             .OrderByDescending(info => info.LastWriteTimeUtc)
             .FirstOrDefault();
-        if (file is null)
+        return file is null ? null : LoadKnown(file.FullName);
+    }
+
+    static CoverageReport? ReadNamed(string folder)
+    {
+        var dir = new DirectoryInfo(folder);
+        while (dir is not null)
+        {
+            var recipe = Path.Combine(dir.FullName, ".pious", "project.json");
+            if (File.Exists(recipe))
+            {
+                var relative = CoveragePath(recipe);
+                if (string.IsNullOrWhiteSpace(relative) || relative.IndexOfAny(['/', '\\']) < 0)
+                    return null;
+                var full = Path.GetFullPath(Path.IsPathRooted(relative) ? relative : Path.Combine(dir.FullName, relative));
+                if (!IsInside(dir.FullName, full) || !File.Exists(full))
+                    return null;
+                return LoadKnown(full);
+            }
+            dir = dir.Parent;
+        }
+        return null;
+    }
+
+    static string? CoveragePath(string recipe)
+    {
+        try
+        {
+            var values = JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(recipe));
+            return values is not null && values.TryGetValue("coverageFile", out var path) ? path : null;
+        }
+        catch (JsonException)
+        {
             return null;
-        var name = file.Name;
-        if (name.Equals("lcov.info", StringComparison.OrdinalIgnoreCase))
-            return LoadLcov(file.FullName);
-        if (name.Equals("jacoco.xml", StringComparison.OrdinalIgnoreCase))
-            return LoadJacoco(file.FullName);
-        return Load(file.FullName);
+        }
+    }
+
+    static bool IsInside(string root, string full)
+    {
+        var baseDir = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var path = Path.GetFullPath(full);
+        return path.Equals(baseDir, StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith(baseDir + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+    }
+
+    static CoverageReport? LoadKnown(string path)
+    {
+        var name = Path.GetFileName(path);
+        if (name.Equals("lcov.info", StringComparison.OrdinalIgnoreCase) || name.EndsWith(".lcov", StringComparison.OrdinalIgnoreCase))
+            return LoadLcov(path);
+        if (name.Contains("jacoco", StringComparison.OrdinalIgnoreCase))
+            return LoadJacoco(path);
+        if (name.Contains("cobertura", StringComparison.OrdinalIgnoreCase))
+            return Load(path);
+        string head;
+        try
+        {
+            using var reader = new StreamReader(path);
+            var buffer = new char[800];
+            var count = reader.Read(buffer, 0, buffer.Length);
+            head = new string(buffer, 0, count);
+        }
+        catch (IOException)
+        {
+            return null;
+        }
+        if (head.Contains("SF:", StringComparison.Ordinal) || head.StartsWith("TN:", StringComparison.Ordinal))
+            return LoadLcov(path);
+        if (head.Contains("<report", StringComparison.OrdinalIgnoreCase))
+            return LoadJacoco(path);
+        if (head.Contains("cobertura", StringComparison.OrdinalIgnoreCase) || head.Contains("<coverage", StringComparison.OrdinalIgnoreCase))
+            return Load(path);
+        return null;
     }
 
     public static CoverageReport Load(string path)

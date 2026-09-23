@@ -11,6 +11,7 @@ public sealed class ProjectPulse : IDisposable
     CancellationTokenSource? _pending;
 
     public event EventHandler? Due;
+    public string? LastPath { get; private set; }
 
     public void WatchFile(string path)
     {
@@ -18,8 +19,9 @@ public sealed class ProjectPulse : IDisposable
         var directory = Path.GetDirectoryName(path);
         if (string.IsNullOrEmpty(directory))
             return;
-        Directory.CreateDirectory(directory);
-        _watcher = new FileSystemWatcher(directory, Path.GetFileName(path))
+        if (!Directory.Exists(directory))
+            return;
+        _watcher = new FileSystemWatcher(directory, "*.json")
         {
             NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.Size | NotifyFilters.CreationTime,
             EnableRaisingEvents = true
@@ -43,6 +45,7 @@ public sealed class ProjectPulse : IDisposable
 
     void OnFile(object? sender, FileSystemEventArgs args)
     {
+        LastPath = args.FullPath;
         _pending?.Cancel();
         var pending = new CancellationTokenSource();
         _pending = pending;

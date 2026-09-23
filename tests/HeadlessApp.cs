@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Fonts.Inter;
 using Avalonia.Headless;
 using PiousProjectViewer;
 
@@ -49,6 +50,7 @@ public static class HeadlessApp
             {
                 AppBuilder.Configure<App>()
                     .UseHeadless(new AvaloniaHeadlessPlatformOptions())
+                    .WithInterFont()
                     .SetupWithoutStarting();
                 started.Set();
                 while (true)

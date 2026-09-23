@@ -1,10 +1,42 @@
 <Application xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:fluent="using:Avalonia.Themes.Fluent"
              x:Class="PiousProjectViewer.App"
              RequestedThemeVariant="Dark">
-             <!-- "Default" ThemeVariant follows system theme variant. "Dark" or "Light" are other available options. -->
-
     <Application.Styles>
-        <FluentTheme />
+        <fluent:FluentTheme>
+            <fluent:FluentTheme.Palettes>
+                <fluent:ColorPaletteResources x:Key="Dark" Accent="#1F8A5B" />
+                <fluent:ColorPaletteResources x:Key="Light" Accent="#1F8A5B" />
+            </fluent:FluentTheme.Palettes>
+        </fluent:FluentTheme>
+        <Style Selector="ScrollBar">
+            <Setter Property="Background" Value="#0E1014" />
+        </Style>
+        <Style Selector="ScrollBar:vertical">
+            <Setter Property="Width" Value="8" />
+            <Setter Property="MinWidth" Value="8" />
+        </Style>
+        <Style Selector="ScrollBar:horizontal">
+            <Setter Property="Height" Value="8" />
+            <Setter Property="MinHeight" Value="8" />
+        </Style>
+        <Style Selector="ScrollBar /template/ RepeatButton#PART_LineUpButton">
+            <Setter Property="IsVisible" Value="False" />
+            <Setter Property="Height" Value="0" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="Width" Value="0" />
+            <Setter Property="MinWidth" Value="0" />
+        </Style>
+        <Style Selector="ScrollBar /template/ RepeatButton#PART_LineDownButton">
+            <Setter Property="IsVisible" Value="False" />
+            <Setter Property="Height" Value="0" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="Width" Value="0" />
+            <Setter Property="MinWidth" Value="0" />
+        </Style>
+        <Style Selector="ScrollBar Thumb">
+            <Setter Property="Background" Value="#4A5368" />
+        </Style>
     </Application.Styles>
 </Application>

@@ -6,18 +6,20 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d" d:DesignWidth="1100" d:DesignHeight="720"
         x:Class="PiousProjectViewer.MainWindow"
-        Title="pious project viewer"
+        Title="Pious Project Viewer"
         Width="1100" Height="720"
         KeyDown="OnKeyDown"
         Background="#0E1014"
-        Foreground="#F4F6F8">
+        Foreground="#F4F6F8"
+        FontFamily="fonts:Inter#Inter"
+        FontSize="13">
     <Window.Styles>
         <Style Selector="Button.side">
             <Setter Property="HorizontalAlignment" Value="Stretch" />
-            <Setter Property="HorizontalContentAlignment" Value="Center" />
-            <Setter Property="MinHeight" Value="36" />
-            <Setter Property="Padding" Value="12,8" />
-            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="MinHeight" Value="32" />
+            <Setter Property="Padding" Value="12,6" />
+            <Setter Property="CornerRadius" Value="8" />
             <Setter Property="Foreground" Value="#F4F6F8" />
             <Setter Property="Background" Value="#1C212B" />
             <Setter Property="BorderBrush" Value="#2C3340" />
@@ -28,11 +30,13 @@
             <Setter Property="Background" Value="#262C38" />
         </Style>
         <Style Selector="Button.side:disabled">
-            <Setter Property="Opacity" Value="0.4" />
+            <Setter Property="Opacity" Value="0.45" />
         </Style>
         <Style Selector="Button.side.primary">
             <Setter Property="Background" Value="#1F8A5B" />
             <Setter Property="BorderBrush" Value="#1F8A5B" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
         </Style>
         <Style Selector="Button.side.primary /template/ ContentPresenter">
             <Setter Property="Background" Value="#1F8A5B" />
@@ -44,135 +48,207 @@
         <Style Selector="Button.side.primary:pressed /template/ ContentPresenter">
             <Setter Property="Background" Value="#18724C" />
         </Style>
+        <Style Selector="Button.row">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Padding" Value="8,4" />
+        </Style>
+        <Style Selector="Button.row:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="#1C212B" />
+        </Style>
         <Style Selector="TextBlock.section">
             <Setter Property="FontSize" Value="11" />
-            <Setter Property="Foreground" Value="#8B93A1" />
-            <Setter Property="Margin" Value="2,18,0,2" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="LetterSpacing" Value="1.2" />
+            <Setter Property="Foreground" Value="#9AA3B2" />
+            <Setter Property="Margin" Value="0,0,0,2" />
+        </Style>
+        <Style Selector="TextBlock.hint">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Foreground" Value="#9AA3B2" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="LineHeight" Value="16" />
+        </Style>
+        <Style Selector="Border.group">
+            <Setter Property="BorderBrush" Value="#232833" />
+            <Setter Property="BorderThickness" Value="0,0,0,1" />
+            <Setter Property="Padding" Value="0,0,0,12" />
+            <Setter Property="Margin" Value="0,0,0,12" />
         </Style>
         <Style Selector="RadioButton">
             <Setter Property="Foreground" Value="#F4F6F8" />
             <Setter Property="FontSize" Value="13" />
+            <Setter Property="Padding" Value="0,2" />
         </Style>
         <Style Selector="ComboBox">
-            <Setter Property="MinHeight" Value="36" />
+            <Setter Property="MinHeight" Value="32" />
             <Setter Property="CornerRadius" Value="8" />
         </Style>
     </Window.Styles>
-    <Grid ColumnDefinitions="*,300" RowDefinitions="5*,Auto,2*">
+    <Grid ColumnDefinitions="*,312" RowDefinitions="5*,Auto,2*">
         <diagram:DiagramView x:Name="Diagram" Grid.Row="0" Grid.Column="0" />
         <GridSplitter Grid.Row="1"
                       Grid.Column="0"
-                      Height="8"
+                      Height="5"
                       HorizontalAlignment="Stretch"
                       ResizeDirection="Rows"
-                      Background="#1A1E27" />
+                      Background="#16181D" />
         <Border Grid.Row="2"
                 Grid.Column="0"
-                Margin="0"
-                Padding="12,8,8,8"
                 BorderThickness="0,1,0,0"
                 BorderBrush="#232833"
                 Background="#0E1014">
-            <terminal:TerminalControl x:Name="Companion"
-                                      FontSize="13"
-                                      Background="#0E1014"
-                                      Foreground="#F4F6F8" />
+            <DockPanel>
+                <Border DockPanel.Dock="Top"
+                        Height="34"
+                        Padding="14,0"
+                        Background="#12141A"
+                        BorderBrush="#232833"
+                        BorderThickness="0,0,0,1">
+                    <TextBlock Text="Companion"
+                               VerticalAlignment="Center"
+                               FontSize="13"
+                               FontWeight="Medium"
+                               LetterSpacing="0.2"
+                               Foreground="#C5CAD3" />
+                </Border>
+                <terminal:TerminalControl x:Name="Companion"
+                                          Margin="14,8,4,8"
+                                          FontFamily="Cascadia Mono, Cascadia Code, Consolas, monospace"
+                                          FontSize="13"
+                                          Background="#0E1014"
+                                          Foreground="#D5DBE6" />
+            </DockPanel>
         </Border>
         <Border Grid.Row="0" Grid.RowSpan="3" Grid.Column="1"
                 Background="#12141A"
                 BorderBrush="#232833"
                 BorderThickness="1,0,0,0"
-                Padding="18,20">
-            <DockPanel>
-                <StackPanel DockPanel.Dock="Top" Spacing="8">
-                    <Button Classes="side" Content="Open project" Click="OnOpen" />
-                    <TextBlock x:Name="ProjectText"
-                               FontSize="12"
-                               Foreground="#8B93A1"
-                               TextWrapping="NoWrap"
-                               TextTrimming="CharacterEllipsis" />
-                    <Button x:Name="RefreshButton"
-                            Classes="side"
-                            Content="Refresh diagram"
-                            IsEnabled="False"
-                            Click="OnAskGrok"
-                            ToolTip.Tip="Start the companion first." />
-                    <Button x:Name="ProposalButton"
-                            Classes="side"
-                            Content="Ask for a proposal"
-                            IsEnabled="False"
-                            Click="OnProposal"
-                            ToolTip.Tip="Start the companion first." />
-                    <TextBlock Classes="section" Text="Language" />
-                    <ComboBox x:Name="LanguageBox"
-                              HorizontalAlignment="Stretch"
-                              SelectionChanged="OnLanguage" />
-                    <TextBlock x:Name="LanguageNote"
-                               FontSize="12"
-                               Foreground="#8B93A1"
-                               TextWrapping="Wrap" />
-                    <TextBlock Classes="section" Text="Companion" />
-                    <ComboBox x:Name="AgentBox"
-                              HorizontalAlignment="Stretch"
-                              SelectionChanged="OnAgent" />
-                    <Button x:Name="StartCompanionButton"
-                            Classes="side primary"
-                            Content="Start companion"
-                            Click="OnStartAgent" />
-                    <TextBlock x:Name="CompanionStatus"
-                               FontSize="12"
-                               Foreground="#8B93A1"
-                               TextWrapping="Wrap"
-                               Text="Not started." />
-                    <TextBlock Classes="section" Text="Color" />
-                    <RadioButton x:Name="ComplexityMode"
-                                 GroupName="paint"
-                                 Content="Complexity"
-                                 IsChecked="True"
-                                 IsCheckedChanged="OnMode" />
-                    <RadioButton x:Name="CrapMode"
-                                 GroupName="paint"
-                                 Content="CRAP"
-                                 IsCheckedChanged="OnMode" />
-                    <TextBlock x:Name="LegendText"
-                               FontSize="12"
-                               Foreground="#8B93A1"
-                               TextWrapping="Wrap" />
-                    <Button x:Name="DeclutterButton"
-                            Classes="side"
-                            Content="Hide wires"
-                            Click="OnDeclutter"
-                            ToolTip.Tip="Hide the wires on screen. The uses stay." />
-                    <Border Height="1" Background="#232833" Margin="0,16,0,6" />
-                    <Grid ColumnDefinitions="*,Auto">
-                        <TextBlock x:Name="PathText"
-                                   FontSize="15"
+                Padding="0">
+            <ScrollViewer HorizontalScrollBarVisibility="Disabled"
+                          VerticalScrollBarVisibility="Auto"
+                          AllowAutoHide="True">
+                <StackPanel Margin="16,16,12,12">
+                    <Border Classes="group">
+                        <StackPanel Spacing="6">
+                            <TextBlock Classes="section" Text="PROJECT" />
+                            <TextBlock x:Name="ProjectText"
+                                       FontSize="18"
+                                       FontWeight="SemiBold"
+                                       LetterSpacing="-0.2"
+                                       TextWrapping="NoWrap"
+                                       TextTrimming="CharacterEllipsis" />
+                            <TextBlock x:Name="ProjectPath"
+                                       Classes="hint"
+                                       TextWrapping="NoWrap"
+                                       TextTrimming="CharacterEllipsis" />
+                            <Button x:Name="OpenButton" Classes="side" Content="Open project" Click="OnOpen" />
+                            <TextBlock Classes="section" Text="LANGUAGE" Margin="0,8,0,2" />
+                            <ComboBox x:Name="LanguageBox"
+                                      HorizontalAlignment="Stretch"
+                                      SelectionChanged="OnLanguage" />
+                            <TextBlock x:Name="LanguageNote" Classes="hint" />
+                        </StackPanel>
+                    </Border>
+                    <Border Classes="group">
+                        <StackPanel Spacing="6">
+                            <TextBlock Classes="section" Text="DIAGRAM" />
+                            <Button x:Name="RefreshButton"
+                                    Classes="side"
+                                    Content="Refresh diagram"
+                                    IsEnabled="False"
+                                    Click="OnAskGrok"
+                                    ToolTip.Tip="Start the companion first." />
+                            <TextBlock Classes="hint" Text="Runs the tests, then redraws." />
+                            <Button x:Name="ProposalButton"
+                                    Classes="side"
+                                    Content="Generate proposal"
+                                    IsEnabled="False"
+                                    Click="OnGenerateProposal"
+                                    ToolTip.Tip="Start the companion first." />
+                            <TextBlock x:Name="ViewText" Classes="hint" Text="Writes a second picture. The scan stays." />
+                            <Button x:Name="SwitchProposalButton"
+                                    Classes="side"
+                                    Content="Switch to proposal"
+                                    IsVisible="False"
+                                    Click="OnSwitchProposal" />
+                        </StackPanel>
+                    </Border>
+                    <Border Classes="group">
+                        <StackPanel Spacing="6">
+                            <TextBlock Classes="section" Text="COMPANION" />
+                            <TextBlock Classes="hint" Text="Runs in the pane below." />
+                            <TextBlock x:Name="AgentName"
+                                       FontSize="13"
+                                       IsVisible="False" />
+                            <ComboBox x:Name="AgentBox"
+                                      HorizontalAlignment="Stretch"
+                                      SelectionChanged="OnAgent" />
+                            <Button x:Name="GenerateButton"
+                                    Classes="side primary"
+                                    Content="Generate project and start agent"
+                                    IsVisible="False"
+                                    Click="OnGenerate" />
+                            <Button x:Name="StartCompanionButton"
+                                    Classes="side primary"
+                                    Content="Start companion"
+                                    Click="OnStartAgent" />
+                            <TextBlock x:Name="CompanionStatus"
+                                       Classes="hint"
+                                       Text="Not started." />
+                        </StackPanel>
+                    </Border>
+                    <Border Classes="group">
+                        <StackPanel Spacing="6">
+                            <TextBlock Classes="section" Text="COLOR BY" />
+                            <RadioButton x:Name="ComplexityMode"
+                                         GroupName="paint"
+                                         Content="Complexity"
+                                         IsChecked="True"
+                                         IsCheckedChanged="OnMode" />
+                            <RadioButton x:Name="CrapMode"
+                                         GroupName="paint"
+                                         Content="CRAP"
+                                         IsCheckedChanged="OnMode" />
+                            <WrapPanel x:Name="LegendRow" />
+                            <Button x:Name="DeclutterButton"
+                                    Classes="side"
+                                    Content="Hide wires"
+                                    Click="OnDeclutter"
+                                    ToolTip.Tip="Hide the wires on screen. The uses stay." />
+                            <TextBlock x:Name="WireHint" Classes="hint" Text="Hides the lines. The uses stay." />
+                        </StackPanel>
+                    </Border>
+                    <StackPanel Spacing="4" Margin="0,0,0,8">
+                        <TextBlock Classes="section" Text="OUTLINE" />
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock x:Name="PathText"
+                                       FontSize="13"
+                                       FontWeight="SemiBold"
+                                       TextWrapping="Wrap"
+                                       VerticalAlignment="Center" />
+                            <Button x:Name="BackButton"
+                                    Grid.Column="1"
+                                    Classes="side"
+                                    Content="Back"
+                                    MinHeight="28"
+                                    MinWidth="64"
+                                    Padding="10,2"
+                                    Margin="8,0,0,0"
+                                    HorizontalAlignment="Right"
+                                    HorizontalContentAlignment="Center"
+                                    IsVisible="False"
+                                    Click="OnBack" />
+                        </Grid>
+                        <TextBlock x:Name="DetailText" Classes="hint" />
+                        <TextBlock x:Name="ListHeading"
+                                   FontSize="13"
                                    FontWeight="SemiBold"
-                                   TextWrapping="Wrap"
-                                   VerticalAlignment="Center" />
-                        <Button x:Name="BackButton"
-                                Grid.Column="1"
-                                Classes="side"
-                                Content="Back"
-                                MinHeight="32"
-                                Padding="12,4"
-                                Margin="8,0,0,0"
-                                HorizontalAlignment="Right"
-                                IsVisible="False"
-                                Click="OnBack" />
-                    </Grid>
-                    <TextBlock x:Name="DetailText"
-                               FontSize="12"
-                               Foreground="#C5CAD3"
-                               TextWrapping="Wrap" />
-                    <TextBlock x:Name="ListHeading"
-                               Classes="section"
-                               Text="On this level" />
+                                   IsVisible="False" />
+                    </StackPanel>
+                    <StackPanel x:Name="MemberRows" Spacing="1" />
                 </StackPanel>
-                <ScrollViewer>
-                    <StackPanel x:Name="MemberRows" Spacing="2" />
-                </ScrollViewer>
-            </DockPanel>
+            </ScrollViewer>
         </Border>
     </Grid>
 </Window>

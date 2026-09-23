@@ -9,8 +9,11 @@ public static class MetricApply
     {
         var coverage = CoverageReport.Find(folder);
         var mutation = MutationReport.Find(folder);
-        document.CoverageReady = coverage is not null;
         document.MutationReady = mutation is not null;
+        if (coverage is null)
+            AssumeUncovered(document);
+        else
+            document.CoverageReady = true;
         foreach (var node in document.Nodes.Where(node => !string.IsNullOrWhiteSpace(node.File)))
         {
             var logic = node.Members.Where(member => member.Kind is not ("field" or "html" or "scss")).OrderBy(member => member.Line).ToList();
@@ -41,6 +44,45 @@ public static class MetricApply
             node.CrapSigma = rollup.Value.Sigma;
         }
         foreach (var package in document.Nodes.Where(node => string.IsNullOrWhiteSpace(node.File) && node.Kind != "foreign").OrderByDescending(node => node.Id.Length))
+        {
+            var children = document.Nodes.Where(node => node.Parent == package.Id && node.CrapMu is not null).ToList();
+            var rollup = CrapMath.Rollup(children.Select(node => node.CrapMu));
+            if (rollup is null)
+                continue;
+            package.CrapMu = rollup.Value.Mu;
+            package.CrapMax = rollup.Value.Max;
+            package.CrapSigma = rollup.Value.Sigma;
+        }
+    }
+
+    public static void AssumeUncovered(DiagramDocument document)
+    {
+        if (!document.SupportsCrap || document.CoverageReady)
+            return;
+        foreach (var node in document.Nodes)
+        {
+            var logic = node.Members.Where(member => member.Kind is not ("field" or "html" or "scss")).ToList();
+            if (logic.Count == 0)
+                continue;
+            foreach (var member in logic)
+            {
+                member.Coverage = 0;
+                member.Crap = Round1(CrapMath.Score(member.Cc, 0));
+            }
+            var rollup = CrapMath.Rollup(logic.Select(member => member.Crap));
+            if (rollup is null)
+                continue;
+            node.CrapMu = rollup.Value.Mu;
+            node.CrapMax = rollup.Value.Max;
+            node.CrapSigma = rollup.Value.Sigma;
+        }
+        FillParents(document);
+        document.CoverageReady = document.Nodes.Any(node => node.CrapMu is not null);
+    }
+
+    public static void FillParents(DiagramDocument document)
+    {
+        foreach (var package in document.Nodes.Where(node => node.Kind != "foreign" && node.CrapMu is null).OrderByDescending(node => node.Id.Length))
         {
             var children = document.Nodes.Where(node => node.Parent == package.Id && node.CrapMu is not null).ToList();
             var rollup = CrapMath.Rollup(children.Select(node => node.CrapMu));

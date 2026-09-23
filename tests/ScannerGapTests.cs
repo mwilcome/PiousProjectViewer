@@ -147,7 +147,7 @@ public class ScannerGapTests
             Assert.Contains(demo.Members!, member => member.Name == "title" && member.Kind == "field");
             Assert.True(demo.Members!.Single(member => member.Name == "run()").Cc >= 3);
             Assert.Contains(text.Edges, edge => edge.From == demo.Id && edge.To.EndsWith("Other"));
-            Assert.Contains(text.Nodes, node => node.Id == "foreign:Angular");
+            Assert.DoesNotContain(text.Nodes, node => node.Id == "foreign:Angular");
             Assert.DoesNotContain(text.Nodes, node => node.Name is "Spec" or "Hidden");
 
             File.WriteAllText(Path.Combine(dir, "angular.json"), "{}");
@@ -157,7 +157,7 @@ public class ScannerGapTests
             demo = parsed.Nodes.Single(node => node.Name == "Demo");
             Assert.Contains(demo.Members!, member => member.Kind == "html" && member.Name == "template");
             Assert.Contains(demo.Members!, member => member.Kind == "scss");
-            Assert.Contains(parsed.Nodes, node => node.Id == "foreign:Angular");
+            Assert.DoesNotContain(parsed.Nodes, node => node.Id == "foreign:Angular");
         }
         finally
         {
@@ -349,6 +349,11 @@ public class ScannerGapTests
             Assert.Contains(".pious/", ignore);
             DiagramPublisher.WriteRecipe(dir, "dotnet test", "scan-me", "", "coverage.cobertura.xml");
             Assert.Equal(1, File.ReadAllText(Path.Combine(dir, ".gitignore")).Split(".pious/").Length - 1);
+            DiagramPublisher.WriteRecipe(dir, "", "scan-me", "", null);
+            Assert.Contains("dotnet test", File.ReadAllText(Path.Combine(dir, ".pious", "project.json")));
+            Assert.Equal("dotnet test", DiagramPublisher.SavedTest(dir));
+            DiagramPublisher.WriteRecipe(dir, "", "other-scan", "", null);
+            Assert.DoesNotContain("dotnet test", File.ReadAllText(Path.Combine(dir, ".pious", "project.json")));
             var node = new DiagramNode { Id = "type:Demo.Alpha", Name = "Alpha", Kind = "package", File = "Types.cs", Line = 4 };
             DiagramPublisher.PostRefreshNode(dir, node, "dotnet test", "scan-me");
             DiagramPublisher.PostProposal(dir);

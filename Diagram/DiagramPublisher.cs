@@ -31,8 +31,27 @@ public static class DiagramPublisher
     public static string DiagramPath(string projectFolder) =>
         Path.Combine(projectFolder, FolderName, DiagramName);
 
+    public static string RecipePath(string projectFolder) =>
+        Path.Combine(projectFolder, FolderName, RecipeName);
+
     public static string ProposalPath(string projectFolder) =>
         Path.Combine(projectFolder, FolderName, ProposalName);
+
+    public static string SavedTest(string projectFolder)
+    {
+        var path = Path.Combine(projectFolder, FolderName, RecipeName);
+        if (!File.Exists(path))
+            return "";
+        try
+        {
+            var recipe = JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(path));
+            return recipe is not null && recipe.TryGetValue("test", out var test) && WorthRunning(test) ? test : "";
+        }
+        catch (JsonException)
+        {
+            return "";
+        }
+    }
 
     public static void WriteRecipe(string projectFolder, string testCommand, string scanCommand, string mutateCommand, string? coverageFile)
     {
@@ -40,15 +59,40 @@ public static class DiagramPublisher
         Directory.CreateDirectory(directory);
         IgnorePious(projectFolder);
         var path = Path.Combine(directory, RecipeName);
+        var keptTest = "";
+        var keptCoverage = "";
+        if (File.Exists(path))
+        {
+            try
+            {
+                var previous = JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(path));
+                if (previous is not null)
+                {
+                    var scanChanged = previous.TryGetValue("scan", out var oldScan) && oldScan != scanCommand;
+                    if (!scanChanged)
+                    {
+                        if (previous.TryGetValue("test", out var previousTest))
+                            keptTest = previousTest;
+                        if (previous.TryGetValue("coverageFile", out var previousCoverage))
+                            keptCoverage = previousCoverage;
+                    }
+                }
+            }
+            catch (JsonException)
+            {
+            }
+        }
+        var test = WorthRunning(testCommand) ? testCommand : keptTest;
+        var coverage = WorthRunning(testCommand) ? coverageFile : keptCoverage;
         var recipe = new Dictionary<string, string>();
-        if (WorthRunning(testCommand))
-            recipe["test"] = testCommand;
+        if (WorthRunning(test))
+            recipe["test"] = test;
         if (WorthRunning(scanCommand))
             recipe["scan"] = scanCommand;
         if (WorthRunning(mutateCommand))
             recipe["mutate"] = mutateCommand;
-        if (WorthRunning(testCommand) && !string.IsNullOrWhiteSpace(coverageFile))
-            recipe["coverageFile"] = coverageFile;
+        if (WorthRunning(test) && !string.IsNullOrWhiteSpace(coverage))
+            recipe["coverageFile"] = coverage;
         var json = JsonSerializer.Serialize(recipe, new JsonSerializerOptions { WriteIndented = true });
         if (File.Exists(path) && File.ReadAllText(path) == json)
             return;
@@ -146,6 +190,8 @@ public static class DiagramPublisher
                     name = node.Name,
                     parent = node.Parent,
                     kind = node.Kind,
+                    role = node.Role,
+                    selector = node.Selector,
                     file = node.File,
                     line = node.Line,
                     worstCc = node.WorstCc,

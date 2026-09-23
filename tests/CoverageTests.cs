@@ -327,6 +327,7 @@ public class CoverageTests
             SessionStore.Save(new Session { Folder = root, Mode = "crap", Language = "auto", Agent = "Grok" });
             var window = new MainWindow();
             window.Show();
+            window.OpenFolder(root);
             var alpha = window.Diagram.Document!.Nodes.Single(node => node.Name == "Alpha");
             Assert.Equal("Alpha", alpha.Name);
             window.Diagram.Select(alpha.Id);

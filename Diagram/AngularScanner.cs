@@ -15,6 +15,8 @@ public sealed class AngularScanner : ILanguageScanner
     static readonly Regex MethodPattern = new(@"^\s*(?:(?:public|private|protected|async|static|readonly|override|get|set)\s+)*([A-Za-z_]\w*)\s*(?:<[^>]+>)?\s*\(", RegexOptions.Compiled);
     static readonly Regex FieldPattern = new(@"^\s*(?:public|private|protected)\s+(?:readonly\s+)?(\w+)\s*=", RegexOptions.Compiled);
     static readonly Regex ImportPattern = new(@"import\s+\{([^}]+)\}\s+from\s+['""]([^'""]+)['""]", RegexOptions.Compiled);
+    static readonly Regex InjectPattern = new(@"inject\(\s*(\w+)", RegexOptions.Compiled);
+    static readonly Regex SelectorPattern = new(@"selector\s*:\s*['""]([^'""]+)['""]", RegexOptions.Compiled);
     static readonly Regex DecisionPattern = new(@"\b(if|for|while|catch|case)\b|&&|\|\||\?", RegexOptions.Compiled);
 
     public string Name => "Angular";
@@ -135,6 +137,8 @@ public sealed class AngularScanner : ILanguageScanner
                 Kind = "package",
                 File = type.File,
                 Line = type.Line,
+                Role = KnownRole(type.Role),
+                Selector = string.IsNullOrWhiteSpace(type.Selector) ? null : type.Selector,
                 WorstCc = worst == 0 ? null : worst,
                 Members = members
             });
@@ -144,17 +148,11 @@ public sealed class AngularScanner : ILanguageScanner
         {
             var from = "type:" + type.Space + "." + type.Name;
             foreach (var imported in type.Imports ?? [])
-            {
-                if (names.TryGetValue(imported, out var target) && target != from)
-                    document.Edges.Add(new DiagramEdge { From = from, To = target });
-            }
+                Use(document, names, from, imported, null);
+            foreach (var injected in type.Injected ?? [])
+                Use(document, names, from, injected, "constructor()");
         }
-        if (types.Any(type => type.UsesAngular))
-        {
-            document.Nodes.Add(new DiagramNode { Id = "foreign:Angular", Name = "Angular", Kind = "foreign" });
-            foreach (var type in types.Where(type => type.UsesAngular))
-                document.Edges.Add(new DiagramEdge { From = "type:" + type.Space + "." + type.Name, To = "foreign:Angular" });
-        }
+        AddTemplateWires(document);
         DiagramNodes.EnsureParents(document);
         MetricApply.Apply(document, folder);
         LevelRank.Apply(document, folder);
@@ -178,27 +176,20 @@ public sealed class AngularScanner : ILanguageScanner
         };
         Add(document, types);
         var names = types.GroupBy(type => type.Name).Where(group => group.Count() == 1).ToDictionary(group => group.Key, group => group.First().Id);
-        var angular = false;
         foreach (var type in types)
         {
+            var node = document.Nodes.First(item => item.Id == type.Id);
+            node.Role = RoleOf(type.Text);
+            node.Selector = SelectorOf(type.Text);
             foreach (Match import in ImportPattern.Matches(type.Text))
             {
-                if (import.Groups[2].Value.StartsWith("@angular/", StringComparison.Ordinal))
-                    angular = true;
                 foreach (var imported in import.Groups[1].Value.Split(','))
-                {
-                    var name = imported.Trim().Split(' ')[0];
-                    if (names.TryGetValue(name, out var target) && target != type.Id)
-                        document.Edges.Add(new DiagramEdge { From = type.Id, To = target });
-                }
+                    Use(document, names, type.Id, imported.Trim().Split(' ')[0], null);
             }
+            foreach (Match inject in InjectPattern.Matches(type.Text))
+                Use(document, names, type.Id, inject.Groups[1].Value, "constructor()");
         }
-        if (angular)
-        {
-            document.Nodes.Add(new DiagramNode { Id = "foreign:Angular", Name = "Angular", Kind = "foreign" });
-            foreach (var type in types.Where(type => type.Text.Contains("@angular/", StringComparison.Ordinal)))
-                document.Edges.Add(new DiagramEdge { From = type.Id, To = "foreign:Angular" });
-        }
+        AddTemplateWires(document);
         DiagramNodes.EnsureParents(document);
         MetricApply.Apply(document, folder);
         LevelRank.Apply(document, folder);
@@ -299,6 +290,88 @@ public sealed class AngularScanner : ILanguageScanner
         }
     }
 
+    static string? KnownRole(string? role) =>
+        role is "component" or "injectable" or "directive" or "pipe" or "ngmodule" ? role : null;
+
+    static string? RoleOf(string text)
+    {
+        if (text.Contains("@Component", StringComparison.Ordinal))
+            return "component";
+        if (text.Contains("@Injectable", StringComparison.Ordinal))
+            return "injectable";
+        if (text.Contains("@Directive", StringComparison.Ordinal))
+            return "directive";
+        if (text.Contains("@Pipe", StringComparison.Ordinal))
+            return "pipe";
+        if (text.Contains("@NgModule", StringComparison.Ordinal))
+            return "ngmodule";
+        return null;
+    }
+
+    static string? SelectorOf(string text)
+    {
+        var match = SelectorPattern.Match(text);
+        return match.Success ? match.Groups[1].Value : null;
+    }
+
+    static void Use(DiagramDocument document, Dictionary<string, string> names, string from, string name, string? member)
+    {
+        if (!names.TryGetValue(name, out var target) || target == from)
+            return;
+        if (document.Edges.Any(edge => edge.From == from && edge.To == target && edge.FromMember == member))
+            return;
+        document.Edges.Add(new DiagramEdge { From = from, To = target, FromMember = member });
+    }
+
+    static void AddTemplateWires(DiagramDocument document)
+    {
+        var selectors = document.Nodes
+            .Where(node => !string.IsNullOrWhiteSpace(node.Selector))
+            .GroupBy(node => node.Selector!, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First().Id, StringComparer.OrdinalIgnoreCase);
+        if (selectors.Count == 0)
+            return;
+        foreach (var node in document.Nodes)
+        {
+            var template = (node.Members ?? []).FirstOrDefault(member => member.Kind == "html" && !string.IsNullOrWhiteSpace(member.File));
+            if (template?.File is null || !File.Exists(template.File))
+                continue;
+            string html;
+            try
+            {
+                html = File.ReadAllText(template.File);
+            }
+            catch (IOException)
+            {
+                continue;
+            }
+            foreach (var pair in selectors)
+            {
+                if (pair.Value == node.Id || !UsesTag(html, pair.Key))
+                    continue;
+                if (document.Edges.Any(edge => edge.From == node.Id && edge.To == pair.Value && edge.FromMember == "template"))
+                    continue;
+                document.Edges.Add(new DiagramEdge { From = node.Id, To = pair.Value, FromMember = "template" });
+            }
+        }
+    }
+
+    static bool UsesTag(string html, string selector)
+    {
+        var needle = "<" + selector;
+        var index = 0;
+        while ((index = html.IndexOf(needle, index, StringComparison.OrdinalIgnoreCase)) >= 0)
+        {
+            var after = index + needle.Length;
+            if (after >= html.Length || !IsTagChar(html[after]))
+                return true;
+            index = after;
+        }
+        return false;
+    }
+
+    static bool IsTagChar(char ch) => char.IsAsciiLetterOrDigit(ch) || ch is '_' or '-';
+
     static string? Parent(string space)
     {
         var name = space["ns:".Length..];
@@ -351,8 +424,10 @@ public sealed class AngularScanner : ILanguageScanner
         public string File { get; set; } = "";
         public int Line { get; set; }
         public string? Role { get; set; }
+        public string? Selector { get; set; }
         public bool UsesAngular { get; set; }
         public List<string>? Imports { get; set; }
+        public List<string>? Injected { get; set; }
         public List<AngularMemberDto> Members { get; set; } = new();
     }
 
