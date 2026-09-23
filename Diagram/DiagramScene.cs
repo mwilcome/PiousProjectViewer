@@ -49,7 +49,7 @@ public static class DiagramScene
 {
     public const double BoxWidth = 220;
     public const double BoxHeight = 64;
-    const double LineHeight = 15;
+    const double LineHeight = 18;
 
     const double GapX = 46;
     const double GapY = 52;
@@ -75,25 +75,10 @@ public static class DiagramScene
             .Select(group => group.OrderBy(node => node.Name, StringComparer.Ordinal).ToList())
             .ToList();
 
-        const double maxRow = 980;
         var placedRows = new List<List<(DiagramNode Node, double Width, double Height)>>();
         foreach (var row in rows)
         {
-            var slice = new List<(DiagramNode Node, double Width, double Height)>();
-            var used = 0d;
-            foreach (var node in row)
-            {
-                var width = WidthFor(node);
-                var height = HeightFor(node);
-                if (slice.Count > 0 && used + GapX + width > maxRow)
-                {
-                    placedRows.Add(slice);
-                    slice = [];
-                    used = 0;
-                }
-                slice.Add((node, width, height));
-                used += (slice.Count == 1 ? 0 : GapX) + width;
-            }
+            var slice = row.Select(node => (node, WidthFor(node), HeightFor(node))).ToList();
             if (slice.Count > 0)
                 placedRows.Add(slice);
         }
@@ -148,14 +133,43 @@ public static class DiagramScene
     static bool HasPicture(DiagramNode node) =>
         !string.IsNullOrWhiteSpace(node.File) || (node.Members ?? []).Count > 0;
 
+    public const string MemberMark = "m:";
+
+    public static string MemberKey(string nodeId, string memberName) => MemberMark + nodeId + "\n" + memberName;
+
+    public static bool IsMemberKey(string key) => key.StartsWith(MemberMark, StringComparison.Ordinal);
+
+    public static (string NodeId, string Name) ParseMemberKey(string key)
+    {
+        var body = key[MemberMark.Length..];
+        var split = body.IndexOf('\n');
+        return split < 0 ? (body, "") : (body[..split], body[(split + 1)..]);
+    }
+
+    public static IReadOnlyList<DiagramMember> Listed(DiagramNode node)
+    {
+        var methods = (node.Members ?? [])
+            .Where(member => member.Kind is not ("field" or "html" or "scss"))
+            .OrderByDescending(member => member.Crap ?? member.Cc)
+            .ThenBy(member => member.Name, StringComparer.Ordinal)
+            .Take(12)
+            .ToList();
+        if (methods.Count == 0)
+            return (node.Members ?? []).Where(member => member.Kind == "field").Take(8).ToList();
+        return methods
+            .Concat((node.Members ?? []).Where(member => member.Kind is "html" or "scss"))
+            .ToList();
+    }
+
     public static double WidthFor(DiagramNode node)
     {
         if (node.Kind == "foreign")
             return 150;
-        var longest = node.Name.Length;
+        var title = 72 + node.Name.Length * 9.4;
+        var longest = 0;
         foreach (var line in LinesIn(node))
             longest = Math.Max(longest, line.Length);
-        return Math.Clamp(32 + longest * 8.6, 148, 380);
+        return Math.Max(176, Math.Max(title, 80 + longest * 7.4));
     }
 
     public static double HeightFor(DiagramNode node)
@@ -168,24 +182,12 @@ public static class DiagramScene
 
     public static IReadOnlyList<string> LinesIn(DiagramNode node)
     {
-        var methods = (node.Members ?? [])
-            .Where(member => member.Kind is not ("field" or "html" or "scss"))
-            .OrderByDescending(member => member.IsPublic)
-            .ThenByDescending(member => member.Cc)
-            .ThenBy(member => member.Name, StringComparer.Ordinal)
-            .ToList();
-        var lines = new List<string>();
-        if (methods.Count > 0)
-        {
-            lines.AddRange(methods.Take(12).Select(ShortMember));
-            if (methods.Count > 12)
-                lines.Add("+ " + (methods.Count - 12) + " more");
-        }
-        else
-        {
-            lines.AddRange((node.Members ?? []).Where(member => member.Kind == "field").Take(8).Select(member => member.Name));
-        }
-        lines.AddRange((node.Members ?? []).Where(member => member.Kind is "html" or "scss").Select(ShortMember));
+        var listed = Listed(node);
+        var lines = listed.Select(ShortMember).ToList();
+        var total = (node.Members ?? []).Count(member => member.Kind is not ("field" or "html" or "scss"));
+        var shown = listed.Count(member => member.Kind is not ("field" or "html" or "scss"));
+        if (total > shown)
+            lines.Add("+ " + (total - shown) + " more");
         return lines;
     }
 
@@ -239,8 +241,6 @@ public static class DiagramScene
         if (member.Kind is "html" or "scss")
             return member.Kind + "  " + member.Name;
         var name = DisplayName(member.Name);
-        if (name.Length > 24)
-            name = name[..22] + "...";
         return (member.IsPublic ? "+ " : "− ") + name;
     }
 
@@ -263,8 +263,8 @@ public static class DiagramScene
         var groups = new Dictionary<(string From, string To), List<DiagramEdge>>();
         foreach (var edge in document.Edges)
         {
-            var from = VisibleEnd(document, parent, edge.From, boxes);
-            var to = VisibleEnd(document, parent, edge.To, boxes);
+            var from = Endpoint(document, parent, edge.From, edge.FromMember, boxes);
+            var to = Endpoint(document, parent, edge.To, edge.ToMember, boxes);
             if (from is null || to is null || from == to)
                 continue;
             var key = (from, to);
@@ -276,22 +276,116 @@ public static class DiagramScene
             list.Add(edge);
         }
 
-        var routes = new List<RoutedEdge>();
+        var drafts = new List<(string From, string To, bool Violating, string Label)>();
         foreach (var (key, list) in groups)
         {
-            var obstacles = boxes.Where(pair => pair.Key != key.From && pair.Key != key.To).Select(pair => pair.Value).ToList();
-            var violating = list.Any(edge => edge.Violating);
             var pairs = list
-                .Select(edge => ShortName(document, edge.From) + " → " + ShortName(document, edge.To))
+                .Select(edge => EdgeLabel(document, edge))
                 .Distinct(StringComparer.Ordinal)
                 .OrderBy(text => text, StringComparer.Ordinal)
                 .ToList();
             var label = string.Join("\n", pairs.Take(12));
             if (pairs.Count > 12)
                 label += "\n+" + (pairs.Count - 12) + " more";
-            routes.Add(new RoutedEdge(key.From, key.To, violating, Points(boxes[key.From], boxes[key.To], violating, obstacles), label));
+            drafts.Add((key.From, key.To, list.Any(edge => edge.Violating), label));
+        }
+
+        var leave = new Dictionary<(string Box, int Side), List<int>>();
+        var arrive = new Dictionary<(string Box, int Side), List<int>>();
+        for (var i = 0; i < drafts.Count; i++)
+        {
+            var fromSide = Facing(boxes[drafts[i].From], boxes[drafts[i].To]);
+            var toSide = Facing(boxes[drafts[i].To], boxes[drafts[i].From]);
+            AddSlot(leave, (drafts[i].From, fromSide), i);
+            AddSlot(arrive, (drafts[i].To, toSide), i);
+        }
+
+        var routes = new List<RoutedEdge>();
+        for (var i = 0; i < drafts.Count; i++)
+        {
+            var draft = drafts[i];
+            var fromBox = boxes[draft.From];
+            var toBox = boxes[draft.To];
+            var fromSide = Facing(fromBox, toBox);
+            var toSide = Facing(toBox, fromBox);
+            var fromSlots = leave[(draft.From, fromSide)];
+            var toSlots = arrive[(draft.To, toSide)];
+            var start = Port(fromBox, fromSide, fromSlots.IndexOf(i), fromSlots.Count);
+            var end = Port(toBox, toSide, toSlots.IndexOf(i), toSlots.Count);
+            IReadOnlyList<Point2> points = draft.Violating
+                ?
+                [
+                    start,
+                    new Point2(Math.Min(fromBox.X, toBox.X) - 36, (start.Y + end.Y) / 2),
+                    end
+                ]
+                : [start, end];
+            routes.Add(new RoutedEdge(draft.From, draft.To, draft.Violating, points, draft.Label));
         }
         return routes;
+    }
+
+    static void AddSlot(Dictionary<(string Box, int Side), List<int>> slots, (string Box, int Side) key, int index)
+    {
+        if (!slots.TryGetValue(key, out var list))
+        {
+            list = [];
+            slots[key] = list;
+        }
+        list.Add(index);
+    }
+
+    static int Facing(Box from, Box to)
+    {
+        var dx = to.CenterX - from.CenterX;
+        var dy = to.CenterY - from.CenterY;
+        if (Math.Abs(dx) >= Math.Abs(dy))
+            return dx >= 0 ? 1 : 0;
+        return dy >= 0 ? 3 : 2;
+    }
+
+    static Point2 Port(Box box, int side, int slot, int count)
+    {
+        var t = (slot + 1) / (double)(count + 1);
+        return side switch
+        {
+            0 => new Point2(box.X, box.Y + box.Height * t),
+            1 => new Point2(box.Right, box.Y + box.Height * t),
+            2 => new Point2(box.X + box.Width * t, box.Y),
+            _ => new Point2(box.X + box.Width * t, box.Bottom)
+        };
+    }
+
+    static string? Endpoint(DiagramDocument document, string? parent, string nodeId, string? member, IReadOnlyDictionary<string, Box> boxes)
+    {
+        var visible = VisibleEnd(document, parent, nodeId, boxes);
+        if (visible is null)
+            return null;
+        if (member is not null && MemberBox(document, visible, member, boxes) is string key)
+            return key;
+        return boxes.ContainsKey(visible) ? visible : null;
+    }
+
+    static string? MemberBox(DiagramDocument document, string nodeId, string member, IReadOnlyDictionary<string, Box> boxes)
+    {
+        var exact = MemberKey(nodeId, member);
+        if (boxes.ContainsKey(exact))
+            return exact;
+        var node = document.Nodes.FirstOrDefault(item => item.Id == nodeId);
+        var match = node?.Members?.FirstOrDefault(item => item.Name == member || DisplayName(item.Name) == member);
+        if (match is null)
+            return null;
+        var key = MemberKey(nodeId, match.Name);
+        return boxes.ContainsKey(key) ? key : null;
+    }
+
+    static string EdgeLabel(DiagramDocument document, DiagramEdge edge)
+    {
+        var from = edge.FromMember is null ? ShortName(document, edge.From) : DisplayName(edge.FromMember);
+        var to = edge.ToMember is null ? ShortName(document, edge.To) : ShortName(document, edge.To) + "." + DisplayName(edge.ToMember);
+        if (edge.From == edge.To && edge.ToMember is not null)
+            to = DisplayName(edge.ToMember);
+        return from + " → " + to;
     }
 
     static string ShortName(DiagramDocument document, string id) =>
@@ -329,8 +423,10 @@ public static class DiagramScene
         }
     }
 
-    public static IReadOnlyList<Point2> Points(Box from, Box to, bool violating, IReadOnlyList<Box>? obstacles = null)
+    public static IReadOnlyList<Point2> Points(Box from, Box to, bool violating, IReadOnlyList<Box>? obstacles = null, Box? frame = null)
     {
+        if (frame is Box bounds && bounds.Width > 0)
+            return Outside(from, to, violating, bounds);
         if (violating)
         {
             var channel = Math.Min(from.X, to.X) - 36;
@@ -379,6 +475,39 @@ public static class DiagramScene
         return dy >= 0
             ? (new Point2(from.CenterX, from.Bottom), new Point2(to.CenterX, to.Y))
             : (new Point2(from.CenterX, from.Y), new Point2(to.CenterX, to.Bottom));
+    }
+
+    static IReadOnlyList<Point2> Outside(Box from, Box to, bool violating, Box frame)
+    {
+        if (violating)
+        {
+            var channel = Math.Min(from.X, to.X) - 36;
+            return
+            [
+                new Point2(from.X, from.CenterY),
+                new Point2(channel, from.CenterY),
+                new Point2(channel, to.CenterY),
+                new Point2(to.X, to.CenterY)
+            ];
+        }
+        var fromRight = from.CenterX <= to.CenterX;
+        var toRight = to.CenterX < from.CenterX;
+        if (to.X >= frame.Right - 1)
+            toRight = false;
+        var start = new Point2(fromRight ? from.Right : from.X, from.CenterY);
+        var end = new Point2(toRight ? to.Right : to.X, to.CenterY);
+        var fromLane = fromRight ? from.Right + 16 : from.X - 16;
+        var toLane = to.X >= frame.Right - 1 ? frame.Right + 36 : toRight ? to.Right + 16 : to.X - 16;
+        var bottom = frame.Bottom + 28;
+        return
+        [
+            start,
+            new Point2(fromLane, start.Y),
+            new Point2(fromLane, bottom),
+            new Point2(toLane, bottom),
+            new Point2(toLane, end.Y),
+            end
+        ];
     }
 
     static int PathHits(IReadOnlyList<Point2> path, IReadOnlyList<Box> blocks)

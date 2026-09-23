@@ -11,11 +11,11 @@ namespace PiousProjectViewer;
 
 public sealed class ClassCardWindow : Window
 {
-    const string Paper = "#F3EFE8";
-    const string Muted = "#9A948A";
-    const string Calm = "#8FCBB0";
-    const string Warning = "#E0C37A";
-    const string Hot = "#E7A0A8";
+    const string Paper = "#F4F6F8";
+    const string Muted = "#8B93A1";
+    const string Calm = "#3DDC97";
+    const string Warning = "#F0C14A";
+    const string Hot = "#FF5C7A";
 
     DiagramNode? _node;
 
@@ -25,7 +25,7 @@ public sealed class ClassCardWindow : Window
         Height = 760;
         CanResize = true;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
-        Background = Brush("#161513");
+        Background = Brush("#12141A");
         Foreground = Brush(Paper);
         KeyDown += (_, e) =>
         {
@@ -111,8 +111,8 @@ public sealed class ClassCardWindow : Window
     {
         var members = node.Members ?? [];
         return diagram.Mode == PaintMode.Crap && diagram.Document?.CoverageReady == true
-            ? members.OrderBy(member => member.Kind == "field").ThenByDescending(member => member.Crap ?? -1)
-            : members.OrderBy(member => member.Kind == "field").ThenByDescending(member => member.Cc);
+            ? members.OrderBy(member => member.Kind is "field" or "html" or "scss").ThenByDescending(member => member.Crap ?? member.Cc)
+            : members.OrderBy(member => member.Kind is "field" or "html" or "scss").ThenByDescending(member => member.Cc);
     }
 
     static IEnumerable<string> Relationships(DiagramView diagram, DiagramNode node)
@@ -209,7 +209,7 @@ public sealed class ClassCardWindow : Window
     {
         null => Muted,
         <= 8 => Calm,
-        <= 20 => Warning,
+        <= 30 => Warning,
         _ => Hot
     };
 

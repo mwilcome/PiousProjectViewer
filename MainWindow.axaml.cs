@@ -88,6 +88,12 @@ public partial class MainWindow : Window
         OpenFolder(path);
     }
 
+    void OnDeclutter(object? sender, RoutedEventArgs e)
+    {
+        Diagram.Declutter = !Diagram.Declutter;
+        DeclutterButton.Content = Diagram.Declutter ? "Show wires" : "Hide wires";
+    }
+
     void OnMode(object? sender, RoutedEventArgs e)
     {
         if (Diagram is null)
@@ -320,7 +326,7 @@ public partial class MainWindow : Window
         }
         if (children.Count == 0)
             ListHeading.Text = selected.Name;
-        foreach (var member in members.OrderByDescending(member => member.Cc).ThenBy(member => member.Name, StringComparer.Ordinal))
+        foreach (var member in members.OrderByDescending(member => member.Crap ?? member.Cc).ThenBy(member => member.Name, StringComparer.Ordinal))
             AddMemberRow(selected, member);
         foreach (var field in fields.OrderBy(field => field.Line))
             AddMemberRow(selected, field);
@@ -358,10 +364,10 @@ public partial class MainWindow : Window
         HorizontalAlignment = HorizontalAlignment.Stretch,
         HorizontalContentAlignment = HorizontalAlignment.Left,
         FontFamily = new FontFamily("Cascadia Mono,Consolas,monospace"),
-        FontSize = 12,
+        FontSize = 13,
         Background = Brushes.Transparent,
-        Foreground = new SolidColorBrush(Color.Parse("#F3EFE8")),
-        Padding = new Avalonia.Thickness(4, 3),
+        Foreground = new SolidColorBrush(Color.Parse("#F4F6F8")),
+        Padding = new Avalonia.Thickness(2, 4),
         MinHeight = 0
     };
 

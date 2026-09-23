@@ -172,11 +172,15 @@ public static class DiagramPublisher
                 }),
             edges = document.Edges
                 .OrderBy(edge => edge.From, StringComparer.Ordinal)
+                .ThenBy(edge => edge.FromMember, StringComparer.Ordinal)
                 .ThenBy(edge => edge.To, StringComparer.Ordinal)
+                .ThenBy(edge => edge.ToMember, StringComparer.Ordinal)
                 .Select(edge => new
                 {
                     from = edge.From,
+                    fromMember = edge.FromMember,
                     to = edge.To,
+                    toMember = edge.ToMember,
                     violating = edge.Violating
                 })
         };

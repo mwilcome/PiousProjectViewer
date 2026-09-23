@@ -159,7 +159,7 @@ public class DiagramSceneTests
     }
 
     [Fact]
-    public void DeclaredRelationshipsIgnoreLocalNames()
+    public void ALocalTypeIsAUseFromThatMethod()
     {
         var dir = Path.Combine(Path.GetTempPath(), "pious-scan-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);
@@ -181,7 +181,8 @@ public class DiagramSceneTests
                 """);
             var document = new CSharpScanner().Scan(dir);
             Assert.Contains(document.Edges, edge => edge.From.EndsWith("Alpha") && edge.To.EndsWith("Beta"));
-            Assert.DoesNotContain(document.Edges, edge => edge.From.EndsWith("Beta") && edge.To.EndsWith("Alpha"));
+            var use = Assert.Single(document.Edges, edge => edge.From.EndsWith("Beta") && edge.To.EndsWith("Alpha"));
+            Assert.Contains("Run", use.FromMember);
             Assert.DoesNotContain(document.Nodes, node => node.Name == "Hidden");
         }
         finally

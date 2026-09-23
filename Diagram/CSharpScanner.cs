@@ -125,7 +125,7 @@ public sealed class CSharpScanner : ILanguageScanner
         var types = files.SelectMany(ReadTypes).ToList();
         var bySimpleName = types.GroupBy(type => type.Name).ToDictionary(group => group.Key, group => group.Select(type => type.Id).ToList());
         foreach (var type in types)
-            ReadDeclared(type, bySimpleName);
+            ReadUses(type, bySimpleName);
 
         var coverage = CoverageReport.Find(root);
         if (coverage is not null)
@@ -376,29 +376,75 @@ public sealed class CSharpScanner : ILanguageScanner
             child is IdentifierNameSyntax identifier && identifier.Identifier.ValueText == "Avalonia"
             || child is QualifiedNameSyntax qualified && qualified.ToString().StartsWith("Avalonia", StringComparison.Ordinal));
 
-    static void ReadDeclared(TypeFact type, Dictionary<string, List<string>> bySimpleName)
+    static void ReadUses(TypeFact type, Dictionary<string, List<string>> bySimpleName)
     {
         if (type.Declaration.BaseList is not null)
         {
             foreach (var baseType in type.Declaration.BaseList.Types)
-                Remember(type, baseType.Type, bySimpleName);
+                Remember(type, null, baseType.Type, bySimpleName);
         }
         foreach (var field in type.Declaration.Members.OfType<FieldDeclarationSyntax>())
-            Remember(type, field.Declaration.Type, bySimpleName);
-        foreach (var constructor in type.Declaration.Members.OfType<ConstructorDeclarationSyntax>())
+            Remember(type, null, field.Declaration.Type, bySimpleName);
+        foreach (var member in type.Declaration.Members)
         {
-            foreach (var parameter in constructor.ParameterList.Parameters)
-                Remember(type, parameter.Type, bySimpleName);
+            var span = type.Methods.FirstOrDefault(method => method.Name == MemberName(member, type.Name));
+            if (span is null || span.Kind == "field")
+                continue;
+            if (UsesAvalonia(member))
+                type.AvaloniaMembers.Add(span.Name);
+            foreach (var syntax in member.DescendantNodes().OfType<TypeSyntax>())
+                Remember(type, span, syntax, bySimpleName);
+            foreach (var call in member.DescendantNodes().OfType<InvocationExpressionSyntax>())
+                RememberCall(type, span, call, bySimpleName);
         }
     }
 
-    static void Remember(TypeFact type, TypeSyntax? syntax, Dictionary<string, List<string>> bySimpleName)
+    static void Remember(TypeFact type, MethodSpan? method, TypeSyntax? syntax, Dictionary<string, List<string>> bySimpleName)
     {
         var simple = SimpleName(syntax);
         if (simple is null || simple == type.Name || !bySimpleName.TryGetValue(simple, out var matches) || matches.Count != 1)
             return;
-        if (matches[0] != type.Id)
+        if (matches[0] == type.Id)
+            return;
+        if (method is null)
             type.ProjectRefs.Add(matches[0]);
+        else
+            method.Refs.Add(matches[0]);
+    }
+
+    static void RememberCall(TypeFact type, MethodSpan method, InvocationExpressionSyntax call, Dictionary<string, List<string>> bySimpleName)
+    {
+        string? called = null;
+        string? targetName = null;
+        switch (call.Expression)
+        {
+            case IdentifierNameSyntax identifier:
+                called = identifier.Identifier.ValueText;
+                break;
+            case MemberAccessExpressionSyntax access:
+                called = access.Name.Identifier.ValueText;
+                if (access.Expression is IdentifierNameSyntax target)
+                    targetName = target.Identifier.ValueText;
+                else if (access.Expression is not (ThisExpressionSyntax or BaseExpressionSyntax))
+                    return;
+                break;
+            default:
+                return;
+        }
+        if (called is null)
+            return;
+        if (targetName is not null && targetName != type.Name)
+        {
+            if (bySimpleName.TryGetValue(targetName, out var matches) && matches.Count == 1 && matches[0] != type.Id)
+                method.Targets.Add((matches[0], called));
+            return;
+        }
+        var callee = type.Methods.FirstOrDefault(other =>
+            other.Kind != "field"
+            && other.Name != method.Name
+            && DiagramScene.DisplayName(other.Name) == called);
+        if (callee is not null)
+            method.Calls.Add(callee.Name);
     }
 
     static string? SimpleName(TypeSyntax? syntax) => syntax switch
@@ -535,12 +581,37 @@ public sealed class CSharpScanner : ILanguageScanner
         var usesAvalonia = false;
         foreach (var type in types)
         {
+            var seen = new HashSet<(string From, string? FromMember, string To, string? ToMember)>();
+            void Add(string? fromMember, string to, string? toMember)
+            {
+                if (seen.Add((type.Id, fromMember, to, toMember)))
+                    document.Edges.Add(new DiagramEdge { From = type.Id, FromMember = fromMember, To = to, ToMember = toMember });
+            }
             foreach (var target in type.ProjectRefs)
-                document.Edges.Add(new DiagramEdge { From = type.Id, To = target });
-            if (!type.UsesAvalonia)
+                Add(null, target, null);
+            foreach (var method in type.Methods)
+            {
+                var aimed = method.Targets.Select(target => target.TypeId).ToHashSet();
+                foreach (var target in method.Refs)
+                {
+                    if (!aimed.Contains(target))
+                        Add(method.Name, target, null);
+                }
+                foreach (var target in method.Targets)
+                    Add(method.Name, target.TypeId, target.Member);
+                foreach (var call in method.Calls)
+                    Add(method.Name, type.Id, call);
+            }
+            if (!type.UsesAvalonia && type.AvaloniaMembers.Count == 0)
                 continue;
             usesAvalonia = true;
-            document.Edges.Add(new DiagramEdge { From = type.Id, To = "foreign:Avalonia" });
+            if (type.AvaloniaMembers.Count == 0)
+                Add(null, "foreign:Avalonia", null);
+            else
+            {
+                foreach (var name in type.AvaloniaMembers)
+                    Add(name, "foreign:Avalonia", null);
+            }
         }
         if (!usesAvalonia)
             return;
@@ -571,6 +642,7 @@ public sealed class CSharpScanner : ILanguageScanner
         public TypeDeclarationSyntax Declaration { get; init; } = null!;
         public List<MethodSpan> Methods { get; init; } = new();
         public HashSet<string> ProjectRefs { get; } = new();
+        public List<string> AvaloniaMembers { get; } = new();
     }
 
     sealed class MethodSpan
@@ -586,5 +658,8 @@ public sealed class CSharpScanner : ILanguageScanner
         public int? Killed { get; set; }
         public int? Survived { get; set; }
         public int? Uncovered { get; set; }
+        public HashSet<string> Refs { get; } = new();
+        public HashSet<string> Calls { get; } = new();
+        public List<(string TypeId, string Member)> Targets { get; } = new();
     }
 }

@@ -321,7 +321,7 @@ public class ScannerGapTests
         var pages = DiagramScene.Build(document, "ns:pages");
         Assert.Contains("type:Home", pages.Boxes.Keys);
         Assert.DoesNotContain("ns:pages.home", pages.Boxes.Keys);
-        Assert.True(pages.Boxes["type:Home"].Width >= 148);
+        Assert.DoesNotContain(pages.Boxes.Keys, key => key.StartsWith("m:", StringComparison.Ordinal));
         Assert.True(pages.Boxes["type:Home"].Height > DiagramScene.BoxHeight);
         var many = DiagramScene.Build(document, "ns:many");
         Assert.Contains("type:A", many.Boxes.Keys);

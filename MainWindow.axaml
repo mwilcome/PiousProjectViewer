@@ -9,45 +9,49 @@
         Title="pious project viewer"
         Width="1100" Height="720"
         KeyDown="OnKeyDown"
-        Background="#141311"
-        Foreground="#F3EFE8">
+        Background="#0E1014"
+        Foreground="#F4F6F8">
     <Window.Styles>
         <Style Selector="Button.side">
             <Setter Property="HorizontalAlignment" Value="Stretch" />
             <Setter Property="HorizontalContentAlignment" Value="Center" />
             <Setter Property="MinHeight" Value="36" />
             <Setter Property="Padding" Value="12,8" />
-            <Setter Property="CornerRadius" Value="8" />
-            <Setter Property="Foreground" Value="#F3EFE8" />
-            <Setter Property="Background" Value="#2A2826" />
-            <Setter Property="BorderBrush" Value="#3A3834" />
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="Foreground" Value="#F4F6F8" />
+            <Setter Property="Background" Value="#1C212B" />
+            <Setter Property="BorderBrush" Value="#2C3340" />
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="FontSize" Value="13" />
         </Style>
         <Style Selector="Button.side:pointerover /template/ ContentPresenter">
-            <Setter Property="Background" Value="#35332F" />
+            <Setter Property="Background" Value="#262C38" />
         </Style>
         <Style Selector="Button.side:disabled">
             <Setter Property="Opacity" Value="0.4" />
         </Style>
         <Style Selector="Button.side.primary">
-            <Setter Property="Background" Value="#2F6B4F" />
-            <Setter Property="BorderBrush" Value="#2F6B4F" />
+            <Setter Property="Background" Value="#1F8A5B" />
+            <Setter Property="BorderBrush" Value="#1F8A5B" />
         </Style>
         <Style Selector="Button.side.primary /template/ ContentPresenter">
-            <Setter Property="Background" Value="#2F6B4F" />
-            <Setter Property="BorderBrush" Value="#2F6B4F" />
+            <Setter Property="Background" Value="#1F8A5B" />
+            <Setter Property="BorderBrush" Value="#1F8A5B" />
         </Style>
         <Style Selector="Button.side.primary:pointerover /template/ ContentPresenter">
-            <Setter Property="Background" Value="#3E7A58" />
+            <Setter Property="Background" Value="#26A36C" />
         </Style>
         <Style Selector="Button.side.primary:pressed /template/ ContentPresenter">
-            <Setter Property="Background" Value="#285C43" />
+            <Setter Property="Background" Value="#18724C" />
         </Style>
         <Style Selector="TextBlock.section">
             <Setter Property="FontSize" Value="11" />
-            <Setter Property="Foreground" Value="#8E887F" />
-            <Setter Property="Margin" Value="0,16,0,0" />
+            <Setter Property="Foreground" Value="#8B93A1" />
+            <Setter Property="Margin" Value="2,18,0,2" />
+        </Style>
+        <Style Selector="RadioButton">
+            <Setter Property="Foreground" Value="#F4F6F8" />
+            <Setter Property="FontSize" Value="13" />
         </Style>
         <Style Selector="ComboBox">
             <Setter Property="MinHeight" Value="36" />
@@ -61,22 +65,22 @@
                       Height="8"
                       HorizontalAlignment="Stretch"
                       ResizeDirection="Rows"
-                      Background="#2A2826" />
+                      Background="#1A1E27" />
         <Border Grid.Row="2"
                 Grid.Column="0"
                 Margin="0"
                 Padding="12,8,8,8"
                 BorderThickness="0,1,0,0"
-                BorderBrush="#2A2826"
-                Background="#10100E">
+                BorderBrush="#232833"
+                Background="#0E1014">
             <terminal:TerminalControl x:Name="Companion"
                                       FontSize="13"
-                                      Background="#10100E"
-                                      Foreground="#F3EFE8" />
+                                      Background="#0E1014"
+                                      Foreground="#F4F6F8" />
         </Border>
         <Border Grid.Row="0" Grid.RowSpan="3" Grid.Column="1"
-                Background="#191816"
-                BorderBrush="#2A2826"
+                Background="#12141A"
+                BorderBrush="#232833"
                 BorderThickness="1,0,0,0"
                 Padding="18,20">
             <DockPanel>
@@ -84,7 +88,7 @@
                     <Button Classes="side" Content="Open project" Click="OnOpen" />
                     <TextBlock x:Name="ProjectText"
                                FontSize="12"
-                               Foreground="#8E887F"
+                               Foreground="#8B93A1"
                                TextWrapping="NoWrap"
                                TextTrimming="CharacterEllipsis" />
                     <Button x:Name="RefreshButton"
@@ -105,7 +109,7 @@
                               SelectionChanged="OnLanguage" />
                     <TextBlock x:Name="LanguageNote"
                                FontSize="12"
-                               Foreground="#8E887F"
+                               Foreground="#8B93A1"
                                TextWrapping="Wrap" />
                     <TextBlock Classes="section" Text="Companion" />
                     <ComboBox x:Name="AgentBox"
@@ -117,7 +121,7 @@
                             Click="OnStartAgent" />
                     <TextBlock x:Name="CompanionStatus"
                                FontSize="12"
-                               Foreground="#8E887F"
+                               Foreground="#8B93A1"
                                TextWrapping="Wrap"
                                Text="Not started." />
                     <TextBlock Classes="section" Text="Color" />
@@ -132,9 +136,14 @@
                                  IsCheckedChanged="OnMode" />
                     <TextBlock x:Name="LegendText"
                                FontSize="12"
-                               Foreground="#8E887F"
+                               Foreground="#8B93A1"
                                TextWrapping="Wrap" />
-                    <Border Height="1" Background="#2A2826" Margin="0,12,0,4" />
+                    <Button x:Name="DeclutterButton"
+                            Classes="side"
+                            Content="Hide wires"
+                            Click="OnDeclutter"
+                            ToolTip.Tip="Hide the wires on screen. The uses stay." />
+                    <Border Height="1" Background="#232833" Margin="0,16,0,6" />
                     <Grid ColumnDefinitions="*,Auto">
                         <TextBlock x:Name="PathText"
                                    FontSize="15"
@@ -154,7 +163,7 @@
                     </Grid>
                     <TextBlock x:Name="DetailText"
                                FontSize="12"
-                               Foreground="#C4BEB4"
+                               Foreground="#C5CAD3"
                                TextWrapping="Wrap" />
                     <TextBlock x:Name="ListHeading"
                                Classes="section"

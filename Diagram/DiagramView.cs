@@ -10,10 +10,10 @@ namespace PiousProjectViewer.Diagram;
 
 public sealed class DiagramView : Control
 {
-    static readonly IBrush CanvasBrush = Brush("#141311");
-    static readonly IBrush Ink = Brush("#F3EFE8");
-    static readonly IBrush Quiet = Brush("#9A948A");
-    static readonly IBrush FrameStroke = Brush("#5C574E");
+    static readonly IBrush CanvasBrush = Brush("#0E1014");
+    static readonly IBrush Ink = Brush("#F4F6F8");
+    static readonly IBrush Quiet = Brush("#8B93A1");
+    static readonly IBrush FrameStroke = Brush("#2A3140");
     static readonly IBrush Violation = Brush(Heat.Violation);
 
     readonly Stack<string> _depth = new();
@@ -166,8 +166,11 @@ public sealed class DiagramView : Control
         using (context.PushTransform(Matrix.CreateTranslation(_pan.X / _scale, _pan.Y / _scale)))
         {
             DrawFrame(context);
-            foreach (var edge in _scene.Edges)
-                DrawEdge(context, edge);
+            if (!_declutter)
+            {
+                foreach (var edge in _scene.Edges)
+                    DrawEdge(context, edge);
+            }
             foreach (var (id, box) in _scene.Boxes)
                 DrawNode(context, Node(id)!, box, id == _selectedId);
         }
@@ -187,6 +190,7 @@ public sealed class DiagramView : Control
         Focus();
         var hit = Hit(e.GetPosition(this));
         _selectedId = hit?.Id;
+        _selectedMember = _hitMember?.Name;
         var right = e.GetCurrentPoint(this).Properties.IsRightButtonPressed;
         if (right && hit is not null)
         {
@@ -203,7 +207,16 @@ public sealed class DiagramView : Control
         _panAtDrag = _pan;
         _captured = e.Pointer;
         e.Pointer.Capture(this);
-        if (e.ClickCount == 2 && hit is not null && HasChildren(hit.Id))
+        if (e.ClickCount == 2 && hit is not null && _hitMember is DiagramMember member)
+        {
+            var file = member.File ?? hit.File;
+            if (file is not null)
+                SourceEditor.Open(file, member.Line);
+            _dragging = false;
+            InvalidateVisual();
+            ViewChanged?.Invoke(this, EventArgs.Empty);
+        }
+        else if (e.ClickCount == 2 && hit is not null && HasChildren(hit.Id))
         {
             _depth.Push(hit.Id);
             _selectedId = null;
@@ -316,24 +329,17 @@ public sealed class DiagramView : Control
     void DrawNode(DrawingContext context, DiagramNode node, Box box, bool selected)
     {
         var rect = ToRect(box);
-        var fillHex = BoxPaint.Fill(node, _mode, _document?.CoverageReady == true);
-        var unscored = fillHex == BoxPaint.CrapNeutral || fillHex == Heat.Color(null);
+        var accent = ClassAccent(node);
         var hot = node.Id == _hotId;
-        var stroke = selected ? Ink : hot ? Brush("#E4D7B8") : unscored ? Brush("#9BB0BA") : Quiet;
-        var pen = new Pen(stroke, selected ? 2.6 : 1.4);
+        var stroke = selected ? Ink : Brush(accent);
+        var pen = new Pen(stroke, selected ? 2.2 : hot ? 1.8 : 1.4);
+        var fill = node.Kind == "foreign" ? "#1A2330" : "#16181D";
         if (node.Kind == "foreign")
-            context.DrawEllipse(Brush(fillHex), pen, rect);
+            context.DrawEllipse(Brush(fill), pen, rect);
         else
-            context.DrawRectangle(Brush(fillHex), pen, new RoundedRect(rect, 14));
-        if (selected)
-        {
-            var ring = rect.Inflate(5);
-            var ringPen = new Pen(Brush("#E6C98A"), 1.6);
-            if (node.Kind == "foreign")
-                context.DrawEllipse(null, ringPen, ring);
-            else
-                context.DrawRectangle(null, ringPen, new RoundedRect(ring, 16));
-        }
+            context.DrawRectangle(Brush(fill), pen, new RoundedRect(rect, 12));
+        if (selected && node.Kind != "foreign")
+            context.DrawRectangle(null, new Pen(Brush("#F4F6F8"), 1.2), new RoundedRect(rect.Inflate(4), 15));
 
         if (node.Kind == "foreign")
         {
@@ -341,14 +347,107 @@ public sealed class DiagramView : Control
             DrawCentered(context, Caption(node), rect, 11, Quiet, 10);
             return;
         }
-        DrawText(context, node.Name, 15, Ink, new Point(rect.X + 12, rect.Y + 8));
-        DrawText(context, Caption(node), 11, selected || hot ? Ink : Quiet, new Point(rect.X + 12, rect.Y + 28));
-        var lineY = rect.Y + 48;
-        foreach (var line in DiagramScene.LinesIn(node))
+        DrawClassHeader(context, node, rect, accent);
+        DrawMemberLines(context, node, rect, selected);
+    }
+
+    void DrawClassHeader(DrawingContext context, DiagramNode node, Rect rect, string accent)
+    {
+        var level = _document?.Nodes.Any(item => item.Rank != 0) == true;
+        var nameX = rect.X + (level ? 28 : 16);
+        if (level)
+            DrawText(context, node.Rank.ToString(), 12, Quiet, new Point(rect.X + 10, rect.Y + 10));
+        DrawText(context, node.Name, 15, Ink, new Point(nameX, rect.Y + 8), FontWeight.SemiBold);
+        var marks = Marks(node);
+        if (marks.Length > 0)
+            DrawText(context, marks, 12, Brush(accent), new Point(rect.Right - 16 - marks.Length * 9, rect.Y + 10));
+        DrawText(context, Caption(node), 12, Brush(accent), new Point(nameX, rect.Y + 30));
+    }
+
+    void DrawMemberLines(DrawingContext context, DiagramNode node, Rect rect, bool selected)
+    {
+        var listed = DiagramScene.Listed(node);
+        var lineY = rect.Y + 52;
+        foreach (var member in listed)
         {
-            DrawText(context, line, 12, Quiet, new Point(rect.X + 12, lineY));
-            lineY += 15;
+            DrawMemberLine(context, node, member, rect, lineY, selected);
+            lineY += 18;
         }
+        var shown = listed.Count(member => member.Kind is not ("field" or "html" or "scss"));
+        var total = (node.Members ?? []).Count(member => member.Kind is not ("field" or "html" or "scss"));
+        if (total > shown)
+            DrawText(context, "+ " + (total - shown) + " more", 12, Quiet, new Point(rect.X + 16, lineY));
+    }
+
+    void DrawMemberLine(DrawingContext context, DiagramNode node, DiagramMember member, Rect rect, double lineY, bool selected)
+    {
+        var picked = selected && member.Name == _selectedMember;
+        var hovered = node.Id == _hotId && member.Name == _hotMember;
+        if (picked || hovered)
+            context.DrawRectangle(Brush(picked ? "#243044" : "#1C2330"), null, new RoundedRect(new Rect(rect.X + 8, lineY - 2, rect.Width - 16, 18), 5));
+        var color = LineColor(member);
+        DrawText(context, member.IsPublic ? "+" : "−", 12, Brush(color), new Point(rect.X + 14, lineY));
+        var label = member.Kind is "html" or "scss"
+            ? member.Kind + "  " + member.Name
+            : DiagramScene.DisplayName(member.Name);
+        DrawText(context, label, 13, member.Kind is "html" or "scss" or "field" ? Quiet : Ink, new Point(rect.X + 30, lineY));
+        var score = LineScore(member);
+        if (score.Length == 0)
+            return;
+        var formatted = Format(score, 12, Brush(color));
+        context.DrawText(formatted, new Point(rect.Right - 14 - formatted.Width, lineY));
+    }
+
+    string ClassAccent(DiagramNode node)
+    {
+        if (node.Kind == "foreign")
+            return "#6E8CA8";
+        if (_mode == PaintMode.Crap && _document?.CoverageReady == true && node.CrapMu is double mu)
+        {
+            var band = new CrapRollup(mu, node.CrapMax ?? mu, node.CrapSigma ?? 0).Band;
+            return band switch
+            {
+                "calm" => "#3DDC97",
+                "warning" => "#F0C14A",
+                _ => "#FF5C7A"
+            };
+        }
+        if (node.WorstCc is int cc)
+            return LineColor(new DiagramMember { Cc = cc, Kind = "method" });
+        return "#5C6B78";
+    }
+
+    string LineColor(DiagramMember member)
+    {
+        if (member.Kind is "html" or "scss" or "field")
+            return "#8B93A1";
+        if (_mode == PaintMode.Crap && _document?.CoverageReady == true && member.Crap is double crap)
+            return crap <= 8 ? "#3DDC97" : crap <= 30 ? "#F0C14A" : "#FF5C7A";
+        return member.Cc switch
+        {
+            <= 8 => "#3DDC97",
+            <= 30 => "#F0C14A",
+            _ => "#FF5C7A"
+        };
+    }
+
+    string LineScore(DiagramMember member)
+    {
+        if (member.Kind is "html" or "scss" or "field")
+            return "";
+        if (_mode == PaintMode.Crap && _document?.CoverageReady == true && member.Crap is double crap)
+            return crap.ToString("0.0");
+        return member.Cc.ToString();
+    }
+
+    static string Marks(DiagramNode node)
+    {
+        var marks = "";
+        if (node.WorstCc is int cc && cc >= 11)
+            marks += "C";
+        if ((node.Members ?? []).Any(member => member.Survived is > 0))
+            marks += marks.Length == 0 ? "M" : " M";
+        return marks;
     }
 
     void ShowRefreshMenu(DiagramNode node)
@@ -368,25 +467,20 @@ public sealed class DiagramView : Control
         Point before;
         using (var figure = geometry.Open())
         {
-            var first = edge.Points[0];
-            figure.BeginFigure(new Point(first.X, first.Y), false);
+            var first = new Point(edge.Points[0].X, edge.Points[0].Y);
+            figure.BeginFigure(first, false);
+            tip = new Point(edge.Points[^1].X, edge.Points[^1].Y);
             if (edge.Points.Count == 2)
             {
                 var (c1, c2) = Bow(edge.Points[0], edge.Points[1]);
-                var end = new Point(edge.Points[1].X, edge.Points[1].Y);
-                figure.CubicBezierTo(c1, c2, end);
-                tip = end;
+                figure.CubicBezierTo(c1, c2, tip);
                 before = c2;
             }
             else
             {
-                var end = new Point(edge.Points[^1].X, edge.Points[^1].Y);
-                figure.CubicBezierTo(
-                    new Point(edge.Points[1].X, edge.Points[1].Y),
-                    new Point(edge.Points[^2].X, edge.Points[^2].Y),
-                    end);
-                tip = end;
-                before = new Point(edge.Points[^2].X, edge.Points[^2].Y);
+                var bend = new Point(edge.Points[1].X, edge.Points[1].Y);
+                figure.CubicBezierTo(bend, bend, tip);
+                before = bend;
             }
             figure.EndFigure(false);
         }
@@ -427,28 +521,45 @@ public sealed class DiagramView : Control
         context.DrawText(formatted, new Point(rect.Center.X - formatted.Width / 2, rect.Center.Y - formatted.Height / 2 + yOffset));
     }
 
-    static void DrawText(DrawingContext context, string text, double size, IBrush brush, Point origin)
+    static void DrawText(DrawingContext context, string text, double size, IBrush brush, Point origin, FontWeight weight = FontWeight.Normal)
     {
-        context.DrawText(Format(text, size, brush), origin);
+        context.DrawText(Format(text, size, brush, weight), origin);
     }
 
-    static FormattedText Format(string text, double size, IBrush brush) => new(
+    static FormattedText Format(string text, double size, IBrush brush, FontWeight weight = FontWeight.Normal) => new(
         text,
         System.Globalization.CultureInfo.CurrentCulture,
         FlowDirection.LeftToRight,
-        new Typeface(FontFamily.Default),
+        new Typeface(FontFamily.Default, FontStyle.Normal, weight),
         size,
         brush);
 
+    DiagramMember? _hitMember;
+    string? _selectedMember;
+    string? _hotMember;
+
     DiagramNode? Hit(Point screen)
     {
+        _hitMember = null;
         var diagram = ScreenToDiagram(screen);
         foreach (var (id, box) in _scene.Boxes.Reverse())
         {
-            if (ToRect(box).Contains(diagram))
-                return Node(id);
+            if (DiagramScene.IsMemberKey(id) || !ToRect(box).Contains(diagram))
+                continue;
+            var node = Node(id);
+            if (node is null)
+                continue;
+            _hitMember = MemberAt(node, box, diagram);
+            return node;
         }
         return null;
+    }
+
+    static DiagramMember? MemberAt(DiagramNode node, Box box, Point diagram)
+    {
+        var listed = DiagramScene.Listed(node);
+        var index = (int)((diagram.Y - box.Y - 46) / 18);
+        return index >= 0 && index < listed.Count ? listed[index] : null;
     }
 
     Point ScreenToDiagram(Point screen) => (screen - _pan) / _scale;
@@ -459,9 +570,21 @@ public sealed class DiagramView : Control
 
     public string? CurrentParentId => _depth.Count == 0 ? null : _depth.Peek();
 
+    public bool Declutter
+    {
+        get => _declutter;
+        set
+        {
+            _declutter = value;
+            InvalidateVisual();
+        }
+    }
+
+    bool _declutter;
+
     public IReadOnlyList<DiagramNode> VisibleNodes() =>
         _scene.Boxes.Keys
-            .Select(id => Node(id))
+            .Select(id => DiagramScene.IsMemberKey(id) ? null : Node(id))
             .Where(node => node is not null && node.Kind != "foreign")
             .Cast<DiagramNode>()
             .OrderBy(node => node.Name, StringComparer.Ordinal)
@@ -597,8 +720,9 @@ public sealed class DiagramView : Control
         var diagram = ScreenToDiagram(screen);
         var hit = Hit(screen);
         var hot = hit?.Id;
+        var hotMember = _hitMember?.Name;
         string? label = null;
-        if (hit is null)
+        if (hit is null && !_declutter)
         {
             var best = 12d;
             foreach (var edge in _scene.Edges)
@@ -611,9 +735,10 @@ public sealed class DiagramView : Control
                 }
             }
         }
-        if (label == _hover && hot == _hotId)
+        if (label == _hover && hot == _hotId && hotMember == _hotMember)
             return;
         _hotId = hot;
+        _hotMember = hotMember;
         _hover = label;
         _hoverAt = new Point(screen.X + 16, screen.Y + 16);
         InvalidateVisual();
@@ -676,7 +801,7 @@ public sealed class DiagramView : Control
             return (new Point(start.X, start.Y), new Point(end.X, end.Y));
         var ux = dx / length;
         var uy = dy / length;
-        var bow = Math.Min(28, length * 0.2);
+        var bow = Math.Min(18, length * 0.08);
         return (
             new Point(start.X + ux * length * 0.35 - uy * bow, start.Y + uy * length * 0.35 + ux * bow),
             new Point(end.X - ux * length * 0.35 - uy * bow, end.Y - uy * length * 0.35 + ux * bow));

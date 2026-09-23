@@ -90,5 +90,7 @@ public sealed class DiagramEdge
 {
     public string From { get; set; } = "";
     public string To { get; set; } = "";
+    public string? FromMember { get; set; }
+    public string? ToMember { get; set; }
     public bool Violating { get; set; }
 }
