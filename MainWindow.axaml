@@ -210,6 +210,11 @@
                                          GroupName="paint"
                                          Content="CRAP"
                                          IsCheckedChanged="OnMode" />
+                            <RadioButton x:Name="DistanceMode"
+                                         GroupName="paint"
+                                         Content="Distance"
+                                         IsCheckedChanged="OnMode" />
+                            <TextBlock x:Name="ColorHint" Classes="hint" />
                             <WrapPanel x:Name="LegendRow" />
                             <Button x:Name="DeclutterButton"
                                     Classes="side"

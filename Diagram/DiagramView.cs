@@ -93,6 +93,16 @@ public sealed class DiagramView : Control
             var node = Selected();
             if (node is null)
                 return "";
+            if (_mode == PaintMode.Distance && _document is not null)
+            {
+                var score = _packages.FirstOrDefault(item => item.Id == node.Id);
+                if (score.Types == 0 && node.Parent is not null)
+                    score = _packages.FirstOrDefault(item => item.Id == node.Parent);
+                if (score.Types > 0 && string.IsNullOrWhiteSpace(node.File))
+                    return score.Name + ". " + score.Meaning();
+                if (!string.IsNullOrWhiteSpace(node.File))
+                    return Display(node.Id, node.Name) + ". " + TypeCoupling.Word(TypeCoupling.Count(_document, node.Id)) + ".";
+            }
             var inside = HasChildren(node.Id)
                 ? " Double-click to open it."
                 : node.Kind == "foreign"
@@ -318,6 +328,7 @@ public sealed class DiagramView : Control
         _scene = _document is null
             ? Scene.Empty
             : DiagramScene.Build(_document, _depth.Count == 0 ? null : _depth.Peek());
+        _packages = _document is null ? [] : MartinDistance.Measure(_document);
         CenterIfNeeded();
         InvalidateVisual();
     }
@@ -342,8 +353,43 @@ public sealed class DiagramView : Control
         var frame = ToRect(_scene.Frame);
         if (frame.Width < 1)
             return;
-        context.DrawRectangle(null, new Pen(FrameStroke, 1.4), new RoundedRect(frame, 18));
+        var frameColor = FrameColor();
+        context.DrawRectangle(null, new Pen(Brush(frameColor), 1.6), new RoundedRect(frame, 18));
         DrawText(context, _scene.Title, 15, Ink, new Point(frame.X + 18, frame.Y + 14));
+        var frameWord = FrameWord();
+        if (frameWord.Length > 0)
+            DrawText(context, frameWord, 12, Brush(frameColor), new Point(frame.X + 18, frame.Y + 32));
+    }
+
+    string FrameColor()
+    {
+        var score = CurrentPackage();
+        return score.Types > 0 ? PackageScore.Color(score.Distance) : "#2A3140";
+    }
+
+    string FrameWord()
+    {
+        var score = CurrentPackage();
+        return score.Types > 0 ? FolderWord(score) : "";
+    }
+
+    PackageScore CurrentPackage()
+    {
+        var id = CurrentParentId;
+        if (_mode != PaintMode.Distance || id is null)
+            return default;
+        return _packages.FirstOrDefault(item => item.Id == id);
+    }
+
+    static string FolderWord(PackageScore score)
+    {
+        if (score.Distance <= 0.1)
+            return score.Instability < 0.5 ? "stable, mostly abstract" : "depends outward";
+        if (score.Instability < 0.5 && score.Abstractness < 0.5)
+            return "others depend on this";
+        if (score.Instability >= 0.5 && score.Abstractness >= 0.5)
+            return "abstract, but depends outward";
+        return "off the line";
     }
 
     void DrawNode(DrawingContext context, DiagramNode node, Box box, bool selected)
@@ -422,6 +468,14 @@ public sealed class DiagramView : Control
     {
         if (node.Kind == "foreign")
             return "#6E8CA8";
+        if (_mode == PaintMode.Distance && _document is not null)
+        {
+            var folder = _packages.FirstOrDefault(item => item.Id == node.Id);
+            if (folder.Types > 0 && string.IsNullOrWhiteSpace(node.File))
+                return PackageScore.Color(folder.Distance);
+            if (!string.IsNullOrWhiteSpace(node.File))
+                return TypeCoupling.Color(TypeCoupling.Count(_document, node.Id));
+        }
         if (_mode == PaintMode.Crap && _document?.CoverageReady == true && node.CrapMu is double mu)
         {
             var band = new CrapRollup(mu, node.CrapMax ?? mu, node.CrapSigma ?? 0).Band;
@@ -441,7 +495,7 @@ public sealed class DiagramView : Control
     {
         if (member.Kind is "html" or "scss" or "field")
             return "#8B93A1";
-        if (_mode == PaintMode.Crap && _document?.CoverageReady == true && member.Crap is double crap)
+        if (LinesUseCrap && member.Crap is double crap)
             return crap <= 8 ? "#3DDC97" : crap <= 30 ? "#F0C14A" : "#FF5C7A";
         return member.Cc switch
         {
@@ -455,7 +509,7 @@ public sealed class DiagramView : Control
     {
         if (member.Kind is "html" or "scss" or "field")
             return "";
-        if (_mode == PaintMode.Crap && _document?.CoverageReady == true && member.Crap is double crap)
+        if (LinesUseCrap && member.Crap is double crap)
             return crap.ToString("0.0");
         return member.Cc.ToString();
     }
@@ -609,6 +663,7 @@ public sealed class DiagramView : Control
     }
 
     bool _declutter;
+    IReadOnlyList<PackageScore> _packages = [];
 
     public IReadOnlyList<DiagramNode> VisibleNodes() =>
         _scene.Boxes.Keys
@@ -632,7 +687,7 @@ public sealed class DiagramView : Control
     string NodeLine(DiagramNode node)
     {
         var worst = Worst(node);
-        if (_mode == PaintMode.Crap && _document?.CoverageReady == true && node.CrapMu is not null && node.CrapSigma is not null)
+        if (LinesUseCrap && node.CrapMu is not null && node.CrapSigma is not null)
         {
             var rollup = new CrapRollup(node.CrapMu.Value, node.CrapMax ?? node.CrapMu.Value, node.CrapSigma.Value);
             var band = rollup.Band.Length == 0 ? rollup.Band : char.ToUpper(rollup.Band[0]) + rollup.Band[1..];
@@ -644,7 +699,7 @@ public sealed class DiagramView : Control
         if (worst is null)
             return DataLine(node);
         var plain = DiagramScene.DisplayName(worst.Name);
-        if (_mode == PaintMode.Crap)
+        if (_mode == PaintMode.Crap || _mode == PaintMode.Distance)
             return $"{plain} is the highest. Complexity {worst.Cc}. CRAP waits for a coverage report.";
         return $"{plain} is the highest. Complexity {worst.Cc}, {Heat.Word(worst.Cc)}.";
     }
@@ -656,7 +711,7 @@ public sealed class DiagramView : Control
         var methods = MethodsOf(node);
         if (methods.Count == 0)
             return null;
-        if (_mode == PaintMode.Crap && _document?.CoverageReady == true)
+        if (LinesUseCrap)
             return methods.OrderByDescending(member => member.Crap ?? -1).ThenByDescending(member => member.Cc).First();
         return methods.OrderByDescending(member => member.Cc).ThenBy(member => member.Name, StringComparer.Ordinal).First();
     }
@@ -668,13 +723,13 @@ public sealed class DiagramView : Control
         var mutants = MutationText(member);
         if (member.Kind == "field")
             return "field  " + name;
-        if (_mode == PaintMode.Crap && _document?.CoverageReady == true)
+        if (LinesUseCrap)
             return $"{member.Crap,6:0.0}   {member.Cc,2}   {CoverageText(member),4}   {mutants}{mark} {name}";
         return $"{member.Cc,2}   {mutants}{mark} {name}";
     }
 
     public string ColumnHeader =>
-        (_mode == PaintMode.Crap && _document?.CoverageReady == true
+        (LinesUseCrap
             ? "  CRAP  CC  Cov  "
             : "CC  ")
         + (_document?.MutationReady == true ? "k  s  u  " : "")
@@ -688,17 +743,32 @@ public sealed class DiagramView : Control
     static string CoverageText(DiagramMember member) =>
         member.Coverage is double coverage ? coverage.ToString("0.#") + "%" : "—";
 
+    bool LinesUseCrap =>
+        (_mode == PaintMode.Crap || _mode == PaintMode.Distance) && _document?.CoverageReady == true;
+
     string Caption(DiagramNode node)
     {
         if (node.Kind == "foreign")
             return "library";
+        if (_mode == PaintMode.Distance && _document is not null)
+        {
+            var folder = _packages.FirstOrDefault(item => item.Id == node.Id);
+            if (folder.Types > 0 && string.IsNullOrWhiteSpace(node.File))
+                return FolderWord(folder);
+            if (!string.IsNullOrWhiteSpace(node.File))
+            {
+                var touched = TypeCoupling.Word(TypeCoupling.Count(_document, node.Id));
+                var role = RoleWord(node.Role);
+                return role.Length == 0 ? touched : role + "  " + touched;
+            }
+        }
         var body = _mode == PaintMode.Crap && _document?.CoverageReady == true && node.CrapMu is not null
             ? "μ " + node.CrapMu.Value.ToString("0.0")
             : node.WorstCc is int cc
                 ? WithKinds("cc " + cc, node)
                 : WithKinds(FieldCaption(node), node);
-        var role = RoleWord(node.Role);
-        return role.Length == 0 ? body : role + "  " + body;
+        var kindWord = RoleWord(node.Role);
+        return kindWord.Length == 0 ? body : kindWord + "  " + body;
     }
 
     static string RoleWord(string? role) => role switch
@@ -779,12 +849,12 @@ public sealed class DiagramView : Control
                 }
             }
         }
+        _hoverAt = new Point(screen.X + 16, screen.Y + 16);
         if (label == _hover && hot == _hotId && hotMember == _hotMember)
             return;
         _hotId = hot;
         _hotMember = hotMember;
         _hover = label;
-        _hoverAt = new Point(screen.X + 16, screen.Y + 16);
         InvalidateVisual();
     }
 

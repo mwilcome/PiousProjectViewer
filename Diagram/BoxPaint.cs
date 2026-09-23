@@ -3,7 +3,8 @@ namespace PiousProjectViewer.Diagram;
 public enum PaintMode
 {
     Complexity,
-    Crap
+    Crap,
+    Distance
 }
 
 public static class BoxPaint

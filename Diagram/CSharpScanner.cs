@@ -228,6 +228,7 @@ public sealed class CSharpScanner : ILanguageScanner
                 File = path,
                 Line = type.GetLocation().GetLineSpan().StartLinePosition.Line + 1,
                 WorstCc = logic.Count == 0 ? 0 : logic.Max(method => method.Cc),
+                Abstract = type is InterfaceDeclarationSyntax || type.Modifiers.Any(modifier => modifier.IsKind(SyntaxKind.AbstractKeyword)),
                 UsesAvalonia = FileUsesAvalonia(type) || UsesAvalonia(type),
                 Declaration = type,
                 Methods = methods
@@ -559,6 +560,7 @@ public sealed class CSharpScanner : ILanguageScanner
                 File = type.File,
                 Line = type.Line,
                 WorstCc = type.WorstCc == 0 ? null : type.WorstCc,
+                Abstract = type.Abstract,
                 CrapMu = type.CrapMu,
                 CrapMax = type.CrapMax,
                 CrapSigma = type.CrapSigma,
@@ -642,6 +644,7 @@ public sealed class CSharpScanner : ILanguageScanner
         public string File { get; init; } = "";
         public int Line { get; init; }
         public int WorstCc { get; init; }
+        public bool Abstract { get; init; }
         public double? CrapMu { get; set; }
         public double? CrapMax { get; set; }
         public double? CrapSigma { get; set; }

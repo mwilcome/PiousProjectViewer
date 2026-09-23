@@ -45,9 +45,16 @@ public partial class MainWindow : Window
         AgentName.Text = AgentBox.SelectedItem as string ?? Agents.Names[0];
         AgentBox.IsVisible = Agents.Names.Count > 1;
         AgentName.IsVisible = Agents.Names.Count < 2;
-        Diagram.Mode = _session.Mode == "crap" ? PaintMode.Crap : PaintMode.Complexity;
+        Diagram.Mode = _session.Mode switch
+        {
+            "crap" => PaintMode.Crap,
+            "distance" => PaintMode.Distance,
+            _ => PaintMode.Complexity
+        };
         if (Diagram.Mode == PaintMode.Crap)
             CrapMode.IsChecked = true;
+        else if (Diagram.Mode == PaintMode.Distance)
+            DistanceMode.IsChecked = true;
         _session.Folder = null;
         ShowEmpty();
         _pulse.Due += (_, _) => Dispatcher.UIThread.Post(OnPiousFile);
@@ -104,8 +111,15 @@ public partial class MainWindow : Window
     {
         if (Diagram is null)
             return;
-        Diagram.Mode = CrapMode.IsChecked == true ? PaintMode.Crap : PaintMode.Complexity;
-        _session.Mode = Diagram.Mode == PaintMode.Crap ? "crap" : "complexity";
+        Diagram.Mode = DistanceMode.IsChecked == true
+            ? PaintMode.Distance
+            : CrapMode.IsChecked == true ? PaintMode.Crap : PaintMode.Complexity;
+        _session.Mode = Diagram.Mode switch
+        {
+            PaintMode.Crap => "crap",
+            PaintMode.Distance => "distance",
+            _ => "complexity"
+        };
         SessionStore.Save(_session);
         RefreshInspector();
     }
@@ -272,19 +286,30 @@ public partial class MainWindow : Window
     void FillLegend()
     {
         LegendRow.Children.Clear();
+        if (Diagram.Mode == PaintMode.Distance)
+        {
+            ColorHint.Text = "A rose folder is one other code depends on. A rose box touches many types.";
+            LegendRow.Children.Add(Swatch("#3DDC97", "Light"));
+            LegendRow.Children.Add(Swatch("#F0C14A", "Some"));
+            LegendRow.Children.Add(Swatch("#FF5C7A", "Heavy"));
+            return;
+        }
         if (Diagram.Mode == PaintMode.Crap && Diagram.Document?.CoverageReady != true)
         {
+            ColorHint.Text = "CRAP needs a coverage report. Until then, nothing here is scored.";
             LegendRow.Children.Add(Swatch(BoxPaint.CrapNeutral, "No score yet"));
             return;
         }
         if (Diagram.Mode == PaintMode.Crap)
         {
+            ColorHint.Text = "Complexity plus how much of the method is untested. Lower is safer to change.";
             LegendRow.Children.Add(Swatch(BoxPaint.CrapCalm, "≤ 8"));
             LegendRow.Children.Add(Swatch(BoxPaint.CrapWarning, "≤ 20"));
             LegendRow.Children.Add(Swatch(BoxPaint.CrapHot, "Above"));
             LegendRow.Children.Add(Swatch(BoxPaint.CrapNeutral, "None"));
             return;
         }
+        ColorHint.Text = "How many paths a method has. Lower is simpler.";
         LegendRow.Children.Add(Swatch(Heat.Color(1), "1–4"));
         LegendRow.Children.Add(Swatch(Heat.Color(5), "5–7"));
         LegendRow.Children.Add(Swatch(Heat.Color(8), "8–10"));
@@ -500,7 +525,13 @@ public partial class MainWindow : Window
 
     void AddChildRow(DiagramNode child)
     {
-        var score = Diagram.Mode == PaintMode.Crap && child.CrapMu is double mu
+        var picture = Diagram.Document;
+        var distance = Diagram.Mode == PaintMode.Distance && picture is not null
+            ? MartinDistance.Measure(picture).FirstOrDefault(item => item.Id == child.Id)
+            : default;
+        var score = Diagram.Mode == PaintMode.Distance
+            ? distance.Types > 0 ? "D " + distance.Distance.ToString("0.00") + "  " : child.Abstract ? "abstract  " : ""
+            : Diagram.Mode == PaintMode.Crap && child.CrapMu is double mu
             ? mu.ToString("0.0").PadLeft(6) + "  "
             : child.WorstCc is int cc ? "cc " + cc.ToString().PadLeft(2) + "  " : "         ";
         var kindList = Diagram.Document is null ? [] : DiagramScene.FileKinds(Diagram.Document, child);

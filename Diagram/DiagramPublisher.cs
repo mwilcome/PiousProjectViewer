@@ -192,6 +192,7 @@ public static class DiagramPublisher
                     kind = node.Kind,
                     role = node.Role,
                     selector = node.Selector,
+                    @abstract = node.Abstract,
                     file = node.File,
                     line = node.Line,
                     worstCc = node.WorstCc,
