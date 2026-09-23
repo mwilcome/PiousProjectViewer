@@ -59,10 +59,10 @@ public sealed class CoverageReport
         var key = _lines.Keys.FirstOrDefault(name => sourceFile.Replace('\\', '/').EndsWith(name, StringComparison.OrdinalIgnoreCase)
             || name.EndsWith(sourceFile.Replace('\\', '/'), StringComparison.OrdinalIgnoreCase));
         if (key is null || !_lines.TryGetValue(key, out var hitsByLine))
-            return 0;
+            return null;
         var relevant = hitsByLine.Where(pair => pair.Key >= startLine && pair.Key <= endLine).ToList();
         if (relevant.Count == 0)
-            return 0;
+            return null;
         return 100d * relevant.Count(pair => pair.Value > 0) / relevant.Count;
     }
 

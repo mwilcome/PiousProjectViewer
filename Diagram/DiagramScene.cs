@@ -59,46 +59,61 @@ public static class DiagramScene
 
     public static Scene Build(DiagramDocument document, string? parent)
     {
-        var structural = document.Nodes.Where(node => node.Kind != "foreign" && node.Parent == parent).ToList();
-        var structuralIds = structural.Select(node => node.Id).ToHashSet();
+        var structural = Shown(document, parent);
+        var structuralIds = document.Nodes.Where(node => node.Kind != "foreign" && node.Parent == parent).Select(node => node.Id).ToHashSet();
         var foreignIds = document.Edges
             .Where(edge => document.Nodes.Any(node => node.Id == edge.To && node.Kind == "foreign"))
             .Where(edge => VisibleStructural(document, edge.From, structuralIds) is not null)
             .Select(edge => edge.To)
             .ToHashSet();
-        var visible = structural.Concat(document.Nodes.Where(node => foreignIds.Contains(node.Id))).ToList();
-        var rows = visible.Where(node => node.Kind != "foreign")
+        var foreign = document.Nodes.Where(node => foreignIds.Contains(node.Id))
+            .OrderBy(node => node.Name, StringComparer.Ordinal)
+            .ToList();
+        var rows = structural
             .GroupBy(node => node.Rank)
             .OrderByDescending(group => group.Key)
             .Select(group => group.OrderBy(node => node.Name, StringComparer.Ordinal).ToList())
             .ToList();
-        var foreign = visible.Where(node => node.Kind == "foreign")
-            .OrderBy(node => node.Name, StringComparer.Ordinal)
-            .ToList();
 
-        var columns = rows.Count == 0 ? 1 : Math.Min(4, rows.Max(row => row.Count));
-        var innerWidth = columns * BoxWidth + Math.Max(0, columns - 1) * GapX;
-        var boxes = new Dictionary<string, Box>();
-        var y = PadTop;
+        const double maxRow = 980;
+        var placedRows = new List<List<(DiagramNode Node, double Width, double Height)>>();
         foreach (var row in rows)
         {
-            for (var index = 0; index < row.Count; index += 4)
+            var slice = new List<(DiagramNode Node, double Width, double Height)>();
+            var used = 0d;
+            foreach (var node in row)
             {
-                var slice = row.Skip(index).Take(4).ToList();
-                var heights = slice.Select(node => HeightFor(document, node)).ToList();
-                var rowHeight = heights.Max();
-                var rowWidth = slice.Count * BoxWidth + Math.Max(0, slice.Count - 1) * GapX;
-                var x = PadX + (innerWidth - rowWidth) / 2;
-                for (var item = 0; item < slice.Count; item++)
+                var width = WidthFor(node);
+                var height = HeightFor(node);
+                if (slice.Count > 0 && used + GapX + width > maxRow)
                 {
-                    boxes[slice[item].Id] = new Box(x, y, BoxWidth, heights[item]);
-                    x += BoxWidth + GapX;
+                    placedRows.Add(slice);
+                    slice = [];
+                    used = 0;
                 }
-                y += rowHeight + GapY;
+                slice.Add((node, width, height));
+                used += (slice.Count == 1 ? 0 : GapX) + width;
             }
+            if (slice.Count > 0)
+                placedRows.Add(slice);
+        }
+        var innerWidth = placedRows.Count == 0 ? BoxWidth : placedRows.Max(slice => slice.Sum(item => item.Width) + Math.Max(0, slice.Count - 1) * GapX);
+        var boxes = new Dictionary<string, Box>();
+        var y = PadTop;
+        foreach (var slice in placedRows)
+        {
+            var rowHeight = slice.Max(item => item.Height);
+            var rowWidth = slice.Sum(item => item.Width) + Math.Max(0, slice.Count - 1) * GapX;
+            var x = PadX + Math.Max(0, (innerWidth - rowWidth) / 2);
+            foreach (var item in slice)
+            {
+                boxes[item.Node.Id] = new Box(x, y, item.Width, item.Height);
+                x += item.Width + GapX;
+            }
+            y += rowHeight + GapY;
         }
 
-        var contentBottom = rows.Count == 0 ? PadTop : y - GapY;
+        var contentBottom = placedRows.Count == 0 ? PadTop : y - GapY;
         var frame = new Box(0, 0, innerWidth + PadX * 2, contentBottom + PadBottom);
         PlaceForeign(foreign, frame, boxes);
 
@@ -108,15 +123,50 @@ public static class DiagramScene
         return new Scene(frame, title, boxes, Routes(document, parent, boxes));
     }
 
-    public static double HeightFor(DiagramDocument document, DiagramNode node)
+    public static List<DiagramNode> Shown(DiagramDocument document, string? parent) =>
+        document.Nodes.Where(node => node.Kind != "foreign" && node.Parent == parent)
+            .Select(node => Hoist(document, node))
+            .GroupBy(node => node.Id)
+            .Select(group => group.First())
+            .OrderBy(node => node.Name, StringComparer.Ordinal)
+            .ToList();
+
+    static DiagramNode Hoist(DiagramDocument document, DiagramNode node)
+    {
+        var current = node;
+        var seen = new HashSet<string>();
+        while (!HasPicture(current) && seen.Add(current.Id))
+        {
+            var children = document.Nodes.Where(item => item.Parent == current.Id && item.Kind != "foreign").ToList();
+            if (children.Count != 1)
+                return current;
+            current = children[0];
+        }
+        return current;
+    }
+
+    static bool HasPicture(DiagramNode node) =>
+        !string.IsNullOrWhiteSpace(node.File) || (node.Members ?? []).Count > 0;
+
+    public static double WidthFor(DiagramNode node)
+    {
+        if (node.Kind == "foreign")
+            return 150;
+        var longest = node.Name.Length;
+        foreach (var line in LinesIn(node))
+            longest = Math.Max(longest, line.Length);
+        return Math.Clamp(32 + longest * 8.6, 148, 380);
+    }
+
+    public static double HeightFor(DiagramNode node)
     {
         if (node.Kind == "foreign")
             return BoxHeight;
-        var lines = LinesIn(document, node).Count;
+        var lines = LinesIn(node).Count;
         return lines == 0 ? BoxHeight : 50 + lines * LineHeight + 10;
     }
 
-    public static IReadOnlyList<string> LinesIn(DiagramDocument document, DiagramNode node)
+    public static IReadOnlyList<string> LinesIn(DiagramNode node)
     {
         var methods = (node.Members ?? [])
             .Where(member => member.Kind is not ("field" or "html" or "scss"))
@@ -133,12 +183,9 @@ public static class DiagramScene
         }
         else
         {
-            lines.AddRange((node.Members ?? []).Where(member => member.Kind == "field").Take(8).Select(member => "ts  " + member.Name));
+            lines.AddRange((node.Members ?? []).Where(member => member.Kind == "field").Take(8).Select(member => member.Name));
         }
         lines.AddRange((node.Members ?? []).Where(member => member.Kind is "html" or "scss").Select(ShortMember));
-        var kinds = FileKinds(document, node);
-        if (kinds.Count > 1 && lines.All(line => !kinds.Any(kind => line.StartsWith(kind, StringComparison.Ordinal))))
-            lines.Insert(0, string.Join("  ·  ", kinds));
         return lines;
     }
 
@@ -181,17 +228,20 @@ public static class DiagramScene
         }
     }
 
+    public static string DisplayName(string name)
+    {
+        var paren = name.IndexOf('(');
+        return paren > 0 ? name[..paren] : name;
+    }
+
     public static string ShortMember(DiagramMember member)
     {
-        var name = member.Name;
-        var paren = name.IndexOf('(');
-        if (paren > 0)
-            name = name[..paren];
         if (member.Kind is "html" or "scss")
             return member.Kind + "  " + member.Name;
+        var name = DisplayName(member.Name);
         if (name.Length > 24)
             name = name[..22] + "...";
-        return (member.IsPublic ? "+ " : "- ") + name;
+        return (member.IsPublic ? "+ " : "− ") + name;
     }
 
     static void PlaceForeign(List<DiagramNode> foreign, Box frame, Dictionary<string, Box> boxes)
@@ -203,7 +253,7 @@ public static class DiagramScene
         var x = frame.Right + 78;
         foreach (var node in foreign)
         {
-            boxes[node.Id] = new Box(x, y, BoxWidth, BoxHeight);
+            boxes[node.Id] = new Box(x, y, WidthFor(node), HeightFor(node));
             y += BoxHeight + 28;
         }
     }
@@ -272,7 +322,7 @@ public static class DiagramScene
             return null;
         while (true)
         {
-            if (current.Parent == parent && boxes.ContainsKey(current.Id))
+            if (boxes.ContainsKey(current.Id))
                 return current.Id;
             if (current.Parent is null || !nodes.TryGetValue(current.Parent, out current))
                 return null;

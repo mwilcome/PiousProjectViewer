@@ -233,18 +233,24 @@ public sealed class CSharpScanner : ILanguageScanner
         var spans = new List<MethodSpan>();
         foreach (var member in type.Members)
         {
-            if (member is not (MethodDeclarationSyntax or ConstructorDeclarationSyntax or PropertyDeclarationSyntax))
-                continue;
-            var line = member.GetLocation().GetLineSpan();
-            spans.Add(new MethodSpan
+            if (member is MethodDeclarationSyntax method)
             {
-                Name = MemberName(member, type.Identifier.ValueText),
-                StartLine = line.StartLinePosition.Line + 1,
-                EndLine = line.EndLinePosition.Line + 1,
-                Cc = Complexity(member),
-                IsPublic = member.Modifiers.Any(token => token.IsKind(SyntaxKind.PublicKeyword)),
-                Kind = "method"
-            });
+                if (method.Body is null && method.ExpressionBody is null)
+                    continue;
+                spans.Add(Span(member, type, "method", Complexity(member)));
+            }
+            else if (member is ConstructorDeclarationSyntax constructor)
+            {
+                if (constructor.Body is null && constructor.ExpressionBody is null)
+                    continue;
+                spans.Add(Span(member, type, "method", Complexity(member)));
+            }
+            else if (member is PropertyDeclarationSyntax property)
+            {
+                var logic = property.ExpressionBody is not null
+                    || property.AccessorList?.Accessors.Any(accessor => accessor.Body is not null || accessor.ExpressionBody is not null) == true;
+                spans.Add(Span(member, type, logic ? "method" : "field", logic ? Complexity(member) : 0));
+            }
         }
         AddFields(type, spans);
         return spans;
@@ -291,6 +297,20 @@ public sealed class CSharpScanner : ILanguageScanner
                 });
             }
         }
+    }
+
+    static MethodSpan Span(MemberDeclarationSyntax member, TypeDeclarationSyntax type, string kind, int cc)
+    {
+        var line = member.GetLocation().GetLineSpan();
+        return new MethodSpan
+        {
+            Name = MemberName(member, type.Identifier.ValueText),
+            StartLine = line.StartLinePosition.Line + 1,
+            EndLine = line.EndLinePosition.Line + 1,
+            Cc = cc,
+            IsPublic = member.Modifiers.Any(token => token.IsKind(SyntaxKind.PublicKeyword)),
+            Kind = kind
+        };
     }
 
     static string MemberName(MemberDeclarationSyntax member, string typeName) => member switch

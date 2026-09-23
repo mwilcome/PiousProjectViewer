@@ -161,7 +161,7 @@ public sealed class AngularScanner : ILanguageScanner
         return document;
     }
 
-    DiagramDocument ScanText(string folder)
+    internal DiagramDocument ScanText(string folder)
     {
         var source = Directory.Exists(Path.Combine(folder, "src")) ? Path.Combine(folder, "src") : folder;
         var files = Walk(source, ".ts").Where(path => !path.EndsWith(".spec.ts", StringComparison.OrdinalIgnoreCase)

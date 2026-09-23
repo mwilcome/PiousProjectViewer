@@ -241,6 +241,16 @@ public class CoverageTests
                     CrapSigma = 1,
                     Members = [new DiagramMember { Name = "Run()", Line = 5, Cc = 8, Coverage = 100, Crap = 8, IsPublic = true }]
                 },
+                new DiagramNode
+                {
+                    Id = "type:app.Other",
+                    Name = "Other",
+                    Parent = "ns:app",
+                    Kind = "package",
+                    File = "Other.cs",
+                    Line = 1,
+                    Members = [new DiagramMember { Name = "Go()", Line = 2, Cc = 1, IsPublic = true }]
+                },
                 new DiagramNode { Id = "foreign:Avalonia", Name = "Avalonia", Kind = "foreign" }
             ],
             Edges = [new DiagramEdge { From = "type:app.Main", To = "foreign:Avalonia" }]
@@ -256,9 +266,28 @@ public class CoverageTests
         var box = FindBox(view);
         Press(view, box, 1);
         Move(view, box + new Vector(12, 8));
+        view.RaiseEvent(new PointerEventArgs(
+            InputElement.PointerExitedEvent,
+            view,
+            new Pointer(1, PointerType.Mouse, true),
+            view,
+            box,
+            0,
+            new PointerPointProperties(RawInputModifiers.None, PointerUpdateKind.Other),
+            KeyModifiers.None));
+        view.RaiseEvent(new PointerPressedEventArgs(
+            view,
+            new Pointer(1, PointerType.Mouse, true),
+            view,
+            box,
+            0,
+            new PointerPointProperties(RawInputModifiers.None, PointerUpdateKind.RightButtonPressed),
+            KeyModifiers.None,
+            1));
         Move(view, new Point(8, 8));
         Wheel(view, box, 1);
         Press(view, box, 2);
+        Assert.Equal("ns:app", view.CurrentParentId);
         Assert.True(view.CanGoBack);
         view.GoBack();
         Assert.False(view.CanGoBack);
@@ -266,10 +295,11 @@ public class CoverageTests
         Press(view, FindBox(view), 2);
         Assert.Contains("Main", opened);
         var main = view.Document.Nodes.Single(node => node.Name == "Main");
-        Assert.Contains("Run()", view.MemberLabel(main.Members[0]));
-        Assert.Contains("Run()", view.Describe(main));
+        Assert.Contains("Run", view.MemberLabel(main.Members[0]));
+        Assert.DoesNotContain("()", view.MemberLabel(main.Members[0]));
+        Assert.Contains("Run", view.Describe(main));
         view.Mode = PaintMode.Complexity;
-        Assert.Contains("complexity", view.Describe(main));
+        Assert.Contains("Complexity", view.Describe(main));
         view.ReplaceDocument(view.Document);
         using (var bitmap = new RenderTargetBitmap(new PixelSize(900, 600), new Vector(96, 96)))
             bitmap.Render(view);
@@ -304,6 +334,21 @@ public class CoverageTests
             method.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
             Assert.NotNull(launched);
             Assert.Contains("Demo.cs", launched!.Arguments);
+            launched = null;
+            Press(window.Diagram, FindBox(window.Diagram), 2);
+            var card = Assert.Single(window.OwnedWindows.OfType<ClassCardWindow>());
+            Assert.Contains("Relationships", string.Join("\n", card.GetVisualDescendants().OfType<TextBlock>().Select(block => block.Text)));
+            var cardRun = card.GetVisualDescendants().OfType<Button>().First(button =>
+                button.GetVisualDescendants().OfType<TextBlock>().Any(block => block.Text != null && block.Text.Contains("Run")));
+            cardRun.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+            Assert.NotNull(launched);
+            card.RaiseEvent(new KeyEventArgs { Key = Key.Escape, RoutedEvent = InputElement.KeyDownEvent });
+            Assert.False(card.IsVisible);
+            window.RefreshOne(alpha);
+            Assert.Contains("Start the companion first", window.CompanionStatus.Text);
+            var proposal = window.GetVisualDescendants().OfType<Button>().First(button => button.Content is string text && text.Contains("proposal"));
+            proposal.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+            Assert.Contains("Start the companion first", window.GetVisualDescendants().OfType<TextBlock>().First(block => block.Name == "CompanionStatus").Text);
             var complexity = window.GetVisualDescendants().OfType<RadioButton>().First(button => Equals(button.Content, "Complexity"));
             complexity.IsChecked = true;
             var language = window.GetVisualDescendants().OfType<ComboBox>().First();
@@ -319,6 +364,10 @@ public class CoverageTests
                 started = true;
                 return Task.CompletedTask;
             };
+            window.GetVisualDescendants().OfType<Button>().First(button => button.Content is string text && text.Contains("companion"))
+                .RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+            Assert.True(started);
+            started = false;
             window.SessionState.Folder = null;
             await window.StartCompanionAsync();
             Assert.False(started);

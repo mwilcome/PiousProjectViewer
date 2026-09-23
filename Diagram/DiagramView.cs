@@ -344,7 +344,7 @@ public sealed class DiagramView : Control
         DrawText(context, node.Name, 15, Ink, new Point(rect.X + 12, rect.Y + 8));
         DrawText(context, Caption(node), 11, selected || hot ? Ink : Quiet, new Point(rect.X + 12, rect.Y + 28));
         var lineY = rect.Y + 48;
-        foreach (var line in DiagramScene.LinesIn(_document ?? new DiagramDocument(), node))
+        foreach (var line in DiagramScene.LinesIn(node))
         {
             DrawText(context, line, 12, Quiet, new Point(rect.X + 12, lineY));
             lineY += 15;
@@ -459,6 +459,14 @@ public sealed class DiagramView : Control
 
     public string? CurrentParentId => _depth.Count == 0 ? null : _depth.Peek();
 
+    public IReadOnlyList<DiagramNode> VisibleNodes() =>
+        _scene.Boxes.Keys
+            .Select(id => Node(id))
+            .Where(node => node is not null && node.Kind != "foreign")
+            .Cast<DiagramNode>()
+            .OrderBy(node => node.Name, StringComparer.Ordinal)
+            .ToList();
+
     public void Select(string id)
     {
         _selectedId = id;
@@ -476,16 +484,18 @@ public sealed class DiagramView : Control
         if (_mode == PaintMode.Crap && _document?.CoverageReady == true && node.CrapMu is not null && node.CrapSigma is not null)
         {
             var rollup = new CrapRollup(node.CrapMu.Value, node.CrapMax ?? node.CrapMu.Value, node.CrapSigma.Value);
-            var method = worst is null
-                ? DataLine(node)
-                : $"Worst method {worst.Name}, CRAP {worst.Crap:0.0}, complexity {worst.Cc}, coverage {CoverageText(worst)}.";
-            return $"CRAP μ {rollup.Mu:0.0}, max {rollup.Max:0.0}, σ {rollup.Sigma:0.0}, {rollup.Band}. {method}";
+            var band = rollup.Band.Length == 0 ? rollup.Band : char.ToUpper(rollup.Band[0]) + rollup.Band[1..];
+            var headline = $"Average {rollup.Mu:0.0}, worst {rollup.Max:0.0}, spread {rollup.Sigma:0.0}. {band}.";
+            if (worst is null)
+                return headline + " " + DataLine(node);
+            return headline + " " + $"{DiagramScene.DisplayName(worst.Name)} is the highest: CRAP {worst.Crap:0.0}, complexity {worst.Cc}, covered {CoverageText(worst)}.";
         }
         if (worst is null)
             return DataLine(node);
+        var plain = DiagramScene.DisplayName(worst.Name);
         if (_mode == PaintMode.Crap)
-            return $"Worst method {worst.Name}, complexity {worst.Cc}. CRAP waits for a coverage report.";
-        return $"Worst method {worst.Name}, complexity {worst.Cc}, {Heat.Word(worst.Cc)}.";
+            return $"{plain} is the highest. Complexity {worst.Cc}. CRAP waits for a coverage report.";
+        return $"{plain} is the highest. Complexity {worst.Cc}, {Heat.Word(worst.Cc)}.";
     }
 
     public string Describe(DiagramNode node) => NodeLine(node);
@@ -502,13 +512,14 @@ public sealed class DiagramView : Control
 
     public string MemberLabel(DiagramMember member)
     {
-        var mark = member.IsPublic ? "+" : "-";
+        var name = DiagramScene.DisplayName(member.Name);
+        var mark = member.IsPublic ? "+" : "−";
         var mutants = MutationText(member);
         if (member.Kind == "field")
-            return $"       field          {mark} {member.Name}";
+            return "field  " + name;
         if (_mode == PaintMode.Crap && _document?.CoverageReady == true)
-            return $"{member.Crap,6:0.0}   {member.Cc,2}   {CoverageText(member),4}   {mutants}{mark} {member.Name}";
-        return $"{member.Cc,2}   {mutants}{mark} {member.Name}";
+            return $"{member.Crap,6:0.0}   {member.Cc,2}   {CoverageText(member),4}   {mutants}{mark} {name}";
+        return $"{member.Cc,2}   {mutants}{mark} {name}";
     }
 
     public string ColumnHeader =>

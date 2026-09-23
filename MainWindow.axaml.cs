@@ -245,7 +245,7 @@ public partial class MainWindow : Window
         _cardWindow.ShowNode(this, Diagram, node);
     }
 
-    void RefreshOne(DiagramNode node)
+    internal void RefreshOne(DiagramNode node)
     {
         if (string.IsNullOrWhiteSpace(_session.Folder))
             return;
@@ -294,10 +294,9 @@ public partial class MainWindow : Window
         if (document is null)
             return;
         var selected = Diagram.SelectedNode;
-        var children = document.Nodes
-            .Where(node => node.Kind != "foreign" && node.Parent == (selected?.Id ?? Diagram.CurrentParentId))
-            .OrderBy(node => node.Name, StringComparer.Ordinal)
-            .ToList();
+        var children = selected is null
+            ? Diagram.VisibleNodes().ToList()
+            : DiagramScene.Shown(document, selected.Id);
         if (selected is null)
         {
             ListHeading.Text = "On this level";
