@@ -50,7 +50,7 @@ public static class GrokLaunch
         "When a line says you have mail, read .pious/to-agent.json, handle the oldest command, and remove it from the queue. " +
         "refresh means: the test line in the mail, or else project.json, is the stored command. If it does not already write one of the three coverage reports, add that runner's coverage flag, save the command and coverageFile in project.json, then run the saved command. Then the scan. If there is no test command, say so and scan only. The first spot check does not add the flag and does not run tests. " +
         "refresh-node is the same, and the mail names the one box. It still tests and scans the whole project. " +
-        "proposal means write .pious/proposal.json in the same shape as diagram.json, regrouping real names only. Do not edit diagram.json. " +
+        "proposal means read .pious/diagram.json and write .pious/proposal.json next to it. The mail names that path. Same names and same ids. The only change is which folder a type sits in. Do not edit diagram.json and do not invent types. Start with a folder other code depends on, and with a type that touches many others. Move that type into a folder that depends outward, when the move is real. If method scores are present, prefer a type whose methods score high. Then one line: which type moved, and which score made it the one. If nothing is heavy, say so and leave the grouping as it is. " +
         "diagram-updated means the picture changed. Read .pious/diagram.json and wait. " +
         "Opening a file or moving around the diagram is not mail. " +
         "Do not commit unless asked.";

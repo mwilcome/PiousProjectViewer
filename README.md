@@ -56,7 +56,7 @@ dotnet run
 
 You need the .NET 10 SDK. The window is the program `PiousProjectViewer`.
 
-**Look at this C# repo.** Open the folder, start the companion, then Refresh diagram. The test command is `dotnet test` on the solution with coverage collection. The scan command rewrites `.pious/diagram.json`. Boxes turn green, gold, or rose from CRAP when `coverage.cobertura.xml` is present.
+**Look at this C# repo.** Open the folder, start the companion, then Refresh diagram. The test command is `dotnet test` on the solution with coverage collection. The scan command rewrites `.pious/diagram.json`. Boxes turn green, gold, or red from CRAP when `coverage.cobertura.xml` is present.
 
 **Look at an Angular app.** The folder needs `angular.json`, or a `package.json` that depends on `@angular/core`. Auto picks Angular when most of the source is TypeScript. If `*.spec.ts` files exist, the test command is `npx ng test --watch=false --coverage --coverage-reporters=lcov`, run through `cmd` so PowerShell does not block `npx`. CRAP reads `lcov.info`. That report needs `@vitest/coverage-v8` on current Angular. If there are no spec files, there is no test command.
 

@@ -288,7 +288,7 @@ public partial class MainWindow : Window
         LegendRow.Children.Clear();
         if (Diagram.Mode == PaintMode.Distance)
         {
-            ColorHint.Text = "A rose folder is one other code depends on. A rose box touches many types.";
+            ColorHint.Text = "A red folder is one other code depends on. A red box touches many types.";
             LegendRow.Children.Add(Swatch("#3DDC97", "Light"));
             LegendRow.Children.Add(Swatch("#F0C14A", "Some"));
             LegendRow.Children.Add(Swatch("#FF5C7A", "Heavy"));

@@ -176,27 +176,17 @@ public class CoverageTests
     {
         ProcessStartInfo? captured = null;
         SourceEditor.Launcher = info => captured = info;
-        SourceEditor.CodeFinder = () => "code.cmd";
         try
         {
             var message = SourceEditor.Open("C:\\demo\\Main.cs", 14);
-            Assert.Contains("14", message);
+            Assert.Contains("default app", message);
             Assert.NotNull(captured);
-            Assert.Equal("code.cmd", captured!.FileName);
-            Assert.Contains("Main.cs:14:1", captured.Arguments);
-            SourceEditor.CodeFinder = () => null;
-            captured = null;
-            var fallback = SourceEditor.Open("C:\\demo\\Main.cs", 0);
-            Assert.Contains("default app", fallback);
             Assert.Equal("C:\\demo\\Main.cs", captured!.FileName);
-            SourceEditor.CodeFinder = null;
-            var real = SourceEditor.Open("C:\\demo\\Main.cs", 4);
-            Assert.False(string.IsNullOrWhiteSpace(real));
+            Assert.True(captured.UseShellExecute);
         }
         finally
         {
             SourceEditor.Launcher = null;
-            SourceEditor.CodeFinder = null;
         }
     }
 
@@ -317,7 +307,6 @@ public class CoverageTests
         SessionStore.FilePathOverride = session;
         ProcessStartInfo? launched = null;
         SourceEditor.Launcher = info => launched = info;
-        SourceEditor.CodeFinder = () => "code.cmd";
         try
         {
             File.WriteAllText(Path.Combine(root, "Demo.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\"></Project>");
@@ -334,7 +323,7 @@ public class CoverageTests
             var method = window.GetVisualDescendants().OfType<Button>().First(button => button.Content is string text && text.Contains("Run"));
             method.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
             Assert.NotNull(launched);
-            Assert.Contains("Demo.cs", launched!.Arguments);
+            Assert.Contains("Demo.cs", launched!.FileName);
             launched = null;
             Press(window.Diagram, FindBox(window.Diagram), 2);
             var card = Assert.Single(window.OwnedWindows.OfType<ClassCardWindow>());
@@ -400,7 +389,6 @@ public class CoverageTests
         {
             SessionStore.FilePathOverride = null;
             SourceEditor.Launcher = null;
-            SourceEditor.CodeFinder = null;
             GrokLaunch.FindOverride = null;
             if (Directory.Exists(root))
                 Directory.Delete(root, true);
