@@ -132,9 +132,9 @@ public static class TypeCoupling
 
     public static string Word(int count) => count switch
     {
-        0 => "touches nothing else",
-        1 => "touches 1 type",
-        _ => "touches " + count + " types"
+        0 => "no links",
+        1 => "1 link",
+        _ => count + " links"
     };
 
     static bool IsType(DiagramDocument document, string id)

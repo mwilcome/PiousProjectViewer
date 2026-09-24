@@ -178,9 +178,8 @@ public class CoverageTests
         SourceEditor.Launcher = info => captured = info;
         try
         {
-            var message = SourceEditor.Open("C:\\demo\\Main.cs", 14);
-            Assert.Contains("default app", message);
-            Assert.NotNull(captured);
+            var opened = SourceEditor.Open("C:\\demo\\Main.cs", 14);
+            Assert.Contains("default app", opened);
             Assert.Equal("C:\\demo\\Main.cs", captured!.FileName);
             Assert.True(captured.UseShellExecute);
         }
@@ -299,6 +298,15 @@ public class CoverageTests
     [Fact]
     public void MainWindowKeepsTheDiagramAndPopsTheCard() => HeadlessApp.OnUi(() => OpenTheCard().GetAwaiter().GetResult());
 
+    static string ButtonText(Button button)
+    {
+        if (button.Content is string text)
+            return text;
+        if (button.Content is not Control control)
+            return "";
+        return string.Join(" ", control.GetVisualDescendants().OfType<TextBlock>().Select(block => block.Text));
+    }
+
     static async Task OpenTheCard()
     {
         var root = Path.Combine(Path.GetTempPath(), "pious-window-" + Guid.NewGuid().ToString("N"));
@@ -320,7 +328,7 @@ public class CoverageTests
             var alpha = window.Diagram.Document!.Nodes.Single(node => node.Name == "Alpha");
             Assert.Equal("Alpha", alpha.Name);
             window.Diagram.Select(alpha.Id);
-            var method = window.GetVisualDescendants().OfType<Button>().First(button => button.Content is string text && text.Contains("Run"));
+            var method = window.GetVisualDescendants().OfType<Button>().First(button => ButtonText(button).Contains("Run"));
             method.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
             Assert.NotNull(launched);
             Assert.Contains("Demo.cs", launched!.FileName);

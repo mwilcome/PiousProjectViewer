@@ -182,11 +182,8 @@ public sealed class DiagramView : Control
         using (context.PushTransform(Matrix.CreateTranslation(_pan.X / _scale, _pan.Y / _scale)))
         {
             DrawFrame(context);
-            if (!_declutter)
-            {
-                foreach (var edge in _scene.Edges)
-                    DrawEdge(context, edge);
-            }
+            foreach (var edge in _scene.Edges)
+                DrawEdge(context, edge);
             foreach (var (id, box) in _scene.Boxes)
                 DrawNode(context, Node(id)!, box, id == _selectedId);
         }
@@ -423,11 +420,12 @@ public sealed class DiagramView : Control
         var nameX = rect.X + (level ? 28 : 16);
         if (level)
             DrawText(context, node.Rank.ToString(), 12, Quiet, new Point(rect.X + 10, rect.Y + 10));
-        DrawText(context, node.Name, 15, Ink, new Point(nameX, rect.Y + 8), FontWeight.SemiBold);
         var marks = Marks(node);
+        var markWidth = marks.Length == 0 ? 0 : marks.Length * 9 + 12;
+        DrawClipped(context, node.Name, 15, Ink, new Point(nameX, rect.Y + 8), Math.Max(8, rect.Right - nameX - markWidth - 8), FontWeight.SemiBold);
         if (marks.Length > 0)
             DrawText(context, marks, 12, Brush(accent), new Point(rect.Right - 16 - marks.Length * 9, rect.Y + 10));
-        DrawText(context, Caption(node), 12, Brush(accent), new Point(nameX, rect.Y + 30));
+        DrawClipped(context, Caption(node), 12, Brush(accent), new Point(nameX, rect.Y + 30), Math.Max(8, rect.Right - nameX - 10));
     }
 
     void DrawMemberLines(DrawingContext context, DiagramNode node, Rect rect, bool selected)
@@ -456,13 +454,22 @@ public sealed class DiagramView : Control
         var label = member.Kind is "html" or "scss"
             ? member.Kind + "  " + member.Name
             : DiagramScene.DisplayName(member.Name);
-        DrawText(context, label, 13, member.Kind is "html" or "scss" or "field" ? Quiet : Ink, new Point(rect.X + 30, lineY));
         var score = LineScore(member);
-        if (score.Length == 0)
-            return;
-        var formatted = Format(score, 12, Brush(color));
-        context.DrawText(formatted, new Point(rect.Right - 14 - formatted.Width, lineY));
+        var scoreWidth = 0d;
+        FormattedText? scoreText = null;
+        if (score.Length > 0)
+        {
+            scoreText = Format(score, 12, Brush(color));
+            scoreWidth = scoreText.Width + 8;
+        }
+        DrawClipped(context, label, 13, member.Kind is "html" or "scss" or "field" ? Quiet : Ink, new Point(rect.X + 30, lineY), Math.Max(8, rect.Width - 44 - scoreWidth));
+        if (scoreText is not null)
+            context.DrawText(scoreText, new Point(rect.Right - 14 - scoreText.Width, lineY));
     }
+
+    public string NodeColor(DiagramNode node) => ClassAccent(node);
+
+    public string MemberColor(DiagramMember member) => LineColor(member);
 
     string ClassAccent(DiagramNode node)
     {
@@ -600,6 +607,14 @@ public sealed class DiagramView : Control
         context.DrawText(Format(text, size, brush, weight), origin);
     }
 
+    static void DrawClipped(DrawingContext context, string text, double size, IBrush brush, Point origin, double maxWidth, FontWeight weight = FontWeight.Normal)
+    {
+        var formatted = Format(text, size, brush, weight);
+        formatted.MaxTextWidth = Math.Max(1, maxWidth);
+        formatted.Trimming = TextTrimming.CharacterEllipsis;
+        context.DrawText(formatted, origin);
+    }
+
     static double DrawWrapped(DrawingContext context, string text, double size, IBrush brush, Point origin, double width, FontWeight weight = FontWeight.Normal)
     {
         var formatted = Format(text, size, brush, weight);
@@ -652,17 +667,6 @@ public sealed class DiagramView : Control
 
     public string? CurrentParentId => _depth.Count == 0 ? null : _depth.Peek();
 
-    public bool Declutter
-    {
-        get => _declutter;
-        set
-        {
-            _declutter = value;
-            InvalidateVisual();
-        }
-    }
-
-    bool _declutter;
     IReadOnlyList<PackageScore> _packages = [];
 
     public IReadOnlyList<DiagramNode> VisibleNodes() =>
@@ -836,7 +840,7 @@ public sealed class DiagramView : Control
         var hot = hit?.Id;
         var hotMember = _hitMember?.Name;
         string? label = null;
-        if (hit is null && !_declutter)
+        if (hit is null)
         {
             var best = 12d;
             foreach (var edge in _scene.Edges)

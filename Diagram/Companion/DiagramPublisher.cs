@@ -140,6 +140,9 @@ public static class DiagramPublisher
     public static void PostProposal(string projectFolder) =>
         Post(projectFolder, new MailItem { Op = "proposal", Path = FolderName + "/" + ProposalName });
 
+    public static void PostStyleProposal(string projectFolder) =>
+        Post(projectFolder, new MailItem { Op = "proposal", Path = FolderName + "/styles-proposal.json" });
+
     public static void PostContext(string projectFolder, DiagramNode node) =>
         Post(projectFolder, new MailItem
         {

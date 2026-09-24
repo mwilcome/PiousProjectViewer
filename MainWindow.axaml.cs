@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -18,11 +19,26 @@ public partial class MainWindow : Window
     readonly ProjectPulse _pulse = new();
     Session _session = new();
     string _language = "auto";
+    bool _stylesTab;
+    string? _stylesFolder;
+    StylePicture? _styles;
     bool _companionRunning;
     bool _showingProposal;
     bool _proposalAnnounced;
     ClassCardWindow? _cardWindow;
     bool _ready;
+    bool _sashDrag;
+    bool _sashLeft;
+    bool _sashFromSnap;
+    bool _leftSnapped;
+    bool _rightSnapped;
+    double _sashDownX;
+    double _sashDownWidth;
+    const double LeftFloor = 180;
+    const double RightFloor = 220;
+    const double MiddleGap = 120;
+    const double SnapPull = 48;
+    const double SashSize = 6;
 
     internal Session SessionState => _session;
 
@@ -32,7 +48,9 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        Shell.SizeChanged += (_, _) => KeepMiddleGap();
         Diagram.ViewChanged += (_, _) => RefreshInspector();
+        StylePictureView.ViewChanged += (_, _) => { if (_stylesTab) ShowStyleOutline(); };
         Diagram.OpenCard += (_, node) => ShowCard(node);
         Diagram.RefreshNode += (_, node) => RefreshOne(node);
         LanguageBox.ItemsSource = new[] { "Auto" }.Concat(Scanners.All.Select(scanner => scanner.Name)).ToList();
@@ -79,11 +97,22 @@ public partial class MainWindow : Window
     {
         if (e.Key != Key.Escape)
             return;
-        Diagram.GoBack();
+        if (_stylesTab && StylePictureView.SelectedBox is not null)
+            StylePictureView.ClearSelection();
+        else
+            Diagram.GoBack();
         e.Handled = true;
     }
 
-    void OnBack(object? sender, RoutedEventArgs e) => Diagram.GoBack();
+    void OnBack(object? sender, RoutedEventArgs e)
+    {
+        if (_stylesTab && StylePictureView.SelectedBox is not null)
+        {
+            StylePictureView.ClearSelection();
+            return;
+        }
+        Diagram.GoBack();
+    }
 
     async void OnOpen(object? sender, RoutedEventArgs e)
     {
@@ -98,13 +127,6 @@ public partial class MainWindow : Window
         if (string.IsNullOrWhiteSpace(path))
             return;
         OpenFolder(path);
-    }
-
-    void OnDeclutter(object? sender, RoutedEventArgs e)
-    {
-        Diagram.Declutter = !Diagram.Declutter;
-        DeclutterButton.Content = Diagram.Declutter ? "Show wires" : "Hide wires";
-        WireHint.Text = Diagram.Declutter ? "Shows the lines again." : "Hides the lines. The uses stay.";
     }
 
     void OnMode(object? sender, RoutedEventArgs e)
@@ -155,6 +177,9 @@ public partial class MainWindow : Window
         if (stoppedCompanion)
             Companion.Kill();
         _session.Folder = folder;
+        _styles = null;
+        _stylesFolder = null;
+        _stylesTab = false;
         _showingProposal = false;
         _proposalAnnounced = File.Exists(DiagramPublisher.ProposalPath(folder));
         _companionRunning = false;
@@ -253,23 +278,50 @@ public partial class MainWindow : Window
             : _language == "auto"
                 ? detected is null ? "This folder is not recognized." : "Detected " + detected.Name + "."
                 : "Using " + _language + ".";
-        FillLegend();
-        PathText.Text = Diagram.PathText;
-        DetailText.Text = Diagram.DetailText;
-        FillList();
-        BackButton.IsVisible = Diagram.CanGoBack;
+        var angular = detected?.Name == "Angular";
+        StylesTab.IsVisible = angular;
+        if (!angular && _stylesTab)
+            _stylesTab = false;
+        Diagram.IsVisible = !_stylesTab;
+        StylePictureView.IsVisible = _stylesTab;
+        ColorGroup.IsVisible = !_stylesTab;
+        StyleLegend.IsVisible = _stylesTab;
+        SetPrimary(ClassesTab, !_stylesTab);
+        SetPrimary(StylesTab, _stylesTab);
+        RefreshHint.Text = _stylesTab ? "Rescans the stylesheets. Tests are not run." : "Runs the tests, then redraws.";
+        RefreshButton.Content = _stylesTab ? "Refresh styles" : "Refresh diagram";
+        if (_stylesTab)
+            FillStyleLegend();
+        else
+            FillLegend();
+        if (_stylesTab)
+            ShowStyleOutline();
+        else
+        {
+            PathText.Text = Diagram.PathText;
+            DetailText.Text = Diagram.DetailText;
+            FillList();
+            BackButton.IsVisible = Diagram.CanGoBack;
+        }
         var proposal = folderOpen && File.Exists(DiagramPublisher.ProposalPath(_session.Folder!));
-        ViewText.Text = !proposal
+        ViewText.Text = _stylesTab
+            ? "Changes one style rule. The scan stays."
+            : !proposal
             ? "Writes a second picture. The scan stays."
             : _showingProposal ? "Showing the proposal." : "Showing the scanned diagram.";
         var live = _companionRunning && Companion.IsLive;
         SetPrimary(OpenButton, !folderOpen);
-        RefreshButton.IsEnabled = live && folderOpen;
+        RefreshButton.IsEnabled = _stylesTab ? folderOpen : live && folderOpen;
         ProposalButton.IsEnabled = live && folderOpen;
-        ToolTip.SetTip(ProposalButton, live
-            ? "Asks the companion to write a proposal. The picture on screen stays."
-            : "Start the companion first.");
-        SwitchProposalButton.IsVisible = proposal;
+        ToolTip.SetTip(RefreshButton, _stylesTab
+            ? "Rescans the stylesheets. The companion is not required."
+            : live ? "Runs the tests, then redraws the diagram." : "Start the companion first.");
+        ToolTip.SetTip(ProposalButton, !live
+            ? "Start the companion first."
+            : _stylesTab
+                ? "Asks the companion to change one style rule. The picture stays."
+                : "Asks the companion to move one type. The picture stays.");
+        SwitchProposalButton.IsVisible = !_stylesTab && proposal;
         SwitchProposalButton.Content = _showingProposal ? "Switch to scanned diagram" : "Switch to proposal";
         SetPrimary(SwitchProposalButton, proposal && !_showingProposal);
         ToolTip.SetTip(SwitchProposalButton, _showingProposal ? "Shows the scanned diagram." : "Shows the proposal.");
@@ -278,9 +330,7 @@ public partial class MainWindow : Window
         var hasRecipe = recognized && File.Exists(DiagramPublisher.RecipePath(_session.Folder!));
         GenerateButton.IsVisible = recognized && !hasRecipe;
         StartCompanionButton.IsVisible = folderOpen && !GenerateButton.IsVisible;
-        ToolTip.SetTip(RefreshButton, live
-            ? "Runs the tests, then redraws the diagram."
-            : "Start the companion first.");
+
     }
 
     void FillLegend()
@@ -354,11 +404,375 @@ public partial class MainWindow : Window
             button.Classes.Remove("primary");
     }
 
+    void OnClassesTab(object? sender, RoutedEventArgs e)
+    {
+        _stylesTab = false;
+        RefreshInspector();
+    }
+
+    void OnStylesTab(object? sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(_session.Folder))
+            return;
+        _stylesTab = true;
+        if (_styles is null || _stylesFolder != _session.Folder)
+            LoadStyles(write: false);
+        else
+            StylePictureView.Show(_styles);
+        RefreshInspector();
+    }
+
+    void LoadStyles(bool write)
+    {
+        _styles = StyleScanner.Scan(_session.Folder!);
+        _stylesFolder = _session.Folder;
+        if (write)
+            StyleFiles.Write(_session.Folder!, _styles);
+        StylePictureView.Show(_styles);
+    }
+
+    void KeepMiddleGap()
+    {
+        if (_sashDrag || Shell.Bounds.Width <= 1)
+            return;
+        var limit = Shell.Bounds.Width - MiddleGap;
+        var left = _leftSnapped ? SashSize : Assigned(0);
+        var right = _rightSnapped ? SashSize : Assigned(2);
+        var overflow = left + right - limit;
+        if (overflow <= 0.5)
+            return;
+        if (!_leftSnapped)
+        {
+            var give = Math.Min(overflow, Math.Max(0, left - LeftFloor));
+            left -= give;
+            overflow -= give;
+        }
+        if (overflow > 0.5 && !_rightSnapped)
+        {
+            var give = Math.Min(overflow, Math.Max(0, right - RightFloor));
+            right -= give;
+            overflow -= give;
+        }
+        if (overflow > 0.5 && !_rightSnapped)
+        {
+            overflow -= right - SashSize;
+            right = SashSize;
+            _rightSnapped = true;
+        }
+        if (overflow > 0.5 && !_leftSnapped)
+        {
+            left = SashSize;
+            _leftSnapped = true;
+        }
+        OutlineBody.IsVisible = !_leftSnapped;
+        ToolsBody.IsVisible = !_rightSnapped;
+        WriteColumn(0, left);
+        WriteColumn(2, right);
+    }
+
+    void OnSashPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+            return;
+        _sashDrag = true;
+        _sashLeft = sender == LeftSash || sender == LeftGrip;
+        _sashFromSnap = _sashLeft ? _leftSnapped : _rightSnapped;
+        _sashDownX = e.GetPosition(Shell).X;
+        _sashDownWidth = Assigned(_sashLeft ? 0 : 2);
+        e.Pointer.Capture((Control)sender!);
+        e.Handled = true;
+    }
+
+    void OnSashMoved(object? sender, PointerEventArgs e)
+    {
+        if (!_sashDrag || e.Pointer.Captured != sender)
+            return;
+        var proposed = _sashDownWidth + (_sashLeft ? 1 : -1) * (e.GetPosition(Shell).X - _sashDownX);
+        if (_sashLeft)
+            DragSash(0, proposed, LeftFloor, ref _leftSnapped);
+        else
+            DragSash(2, proposed, RightFloor, ref _rightSnapped);
+        e.Handled = true;
+    }
+
+    void OnSashReleased(object? sender, RoutedEventArgs e)
+    {
+        if (!_sashDrag)
+            return;
+        _sashDrag = false;
+        if (e is PointerReleasedEventArgs released && released.Pointer.Captured == sender)
+            released.Pointer.Capture(null);
+        var index = _sashLeft ? 0 : 2;
+        var floor = _sashLeft ? LeftFloor : RightFloor;
+        var width = Assigned(index);
+        var max = MaxFor(index);
+        var opened = width >= floor - 0.5 || (max < floor && width >= max - 0.5 && width > SashSize);
+        if (!opened)
+        {
+            if (_sashLeft)
+                _leftSnapped = true;
+            else
+                _rightSnapped = true;
+            ShowSection(_sashLeft, false);
+            SetColumn(index, SashSize);
+            return;
+        }
+        if (_sashLeft)
+            _leftSnapped = false;
+        else
+            _rightSnapped = false;
+        ShowSection(_sashLeft, true);
+        SetColumn(index, width);
+    }
+
+    void DragSash(int index, double proposed, double floor, ref bool snapped)
+    {
+        var max = MaxFor(index);
+        var left = index == 0;
+        proposed = Math.Max(SashSize, Math.Min(proposed, max));
+        if (_sashFromSnap)
+        {
+            snapped = false;
+            ShowSection(left, true);
+            SetColumn(index, proposed);
+            return;
+        }
+        if (snapped)
+        {
+            if (proposed < floor)
+            {
+                ShowSection(left, false);
+                SetColumn(index, SashSize);
+                return;
+            }
+            snapped = false;
+            ShowSection(left, true);
+            SetColumn(index, proposed);
+            return;
+        }
+        if (proposed >= floor)
+        {
+            ShowSection(left, true);
+            SetColumn(index, proposed);
+            return;
+        }
+        if (floor - proposed >= SnapPull)
+        {
+            snapped = true;
+            ShowSection(left, false);
+            SetColumn(index, SashSize);
+            return;
+        }
+        ShowSection(left, true);
+        SetColumn(index, Math.Min(floor, max));
+    }
+
+    double Assigned(int index)
+    {
+        var length = Shell.ColumnDefinitions[index].Width;
+        return length.IsAbsolute ? length.Value : SashSize;
+    }
+
+    double MaxFor(int index)
+    {
+        if (Shell.Bounds.Width <= 1)
+            return 800;
+        var other = Assigned(index == 0 ? 2 : 0);
+        return Math.Max(SashSize, Shell.Bounds.Width - other - MiddleGap);
+    }
+
+    void ShowSection(bool left, bool open)
+    {
+        if (left)
+            OutlineBody.IsVisible = open;
+        else
+            ToolsBody.IsVisible = open;
+    }
+
+    void SetColumn(int index, double width) => WriteColumn(index, Math.Min(width, MaxFor(index)));
+
+    void WriteColumn(int index, double width)
+    {
+        var column = Shell.ColumnDefinitions[index];
+        column.MinWidth = SashSize;
+        column.MaxWidth = double.PositiveInfinity;
+        column.Width = new GridLength(Math.Max(SashSize, Math.Round(width)));
+    }
+
+    void ShowStyleOutline()
+    {
+        if (_styles is null)
+        {
+            PathText.Text = "Styles";
+            DetailText.Text = "Open the Styles tab to scan.";
+            ListHeading.IsVisible = false;
+            BackButton.IsVisible = false;
+            MemberRows.Children.Clear();
+            return;
+        }
+        var template = _styles.Templates.FirstOrDefault(item => item.Id == StylePictureView.SelectedBox);
+        if (template is null)
+        {
+            PathText.Text = "Styles";
+            DetailText.Text = _styles.Selectors.Count + " selectors.";
+            ListHeading.IsVisible = false;
+            BackButton.IsVisible = false;
+            FillStyleList();
+            return;
+        }
+        var hits = _styles.Selectors.Where(selector => selector.Hits.Contains(template.Id)).ToList();
+        PathText.Text = template.Name;
+        DetailText.Text = hits.Count == 0
+            ? "No stylesheet hits this file."
+            : hits.Count == 1
+                ? "1 style hits this file. Click it to open the stylesheet."
+                : hits.Count + " styles hit this file. Click one to open its stylesheet.";
+        ListHeading.IsVisible = false;
+        BackButton.IsVisible = true;
+        FillTemplateStyles(template, hits);
+        OutlineScroll.Offset = new Avalonia.Vector(0, 0);
+    }
+
+    void FillStyleLegend()
+    {
+        StyleSwatches.Children.Clear();
+        StyleSwatches.Children.Add(Swatch("#3DDC97", "One home"));
+        StyleSwatches.Children.Add(Swatch("#F0C14A", "Worth a look"));
+        StyleSwatches.Children.Add(Swatch("#FF5C7A", "Duplicated"));
+    }
+
+    void FillStyleList()
+    {
+        MemberRows.Children.Clear();
+        if (_styles is null)
+            return;
+        foreach (var selector in _styles.Selectors)
+        {
+            var button = OutlineButton(selector.Name, selector.Mark, selector.FileName, selector.Color);
+            var name = selector.Name;
+            button.Click += (_, _) => StylePictureView.Select(name);
+            MemberRows.Children.Add(button);
+        }
+        foreach (var template in _styles.Templates)
+        {
+            foreach (var missing in template.Unstyled)
+            {
+                var button = OutlineButton("." + missing, "no rule", template.Name, "#F0C14A");
+                MemberRows.Children.Add(button);
+            }
+        }
+    }
+
+    void FillTemplateStyles(StyleTemplate template, List<StyleSelector> hits)
+    {
+        MemberRows.Children.Clear();
+        var htmlPath = template.File;
+        var html = StyleHitButton(template.Name, "Open this HTML", "#9AA3B2");
+        html.Click += (_, _) => CompanionStatus.Text = SourceEditor.Open(htmlPath, 1);
+        MemberRows.Children.Add(html);
+        foreach (var selector in hits)
+        {
+            var sheet = _styles!.Sheets.FirstOrDefault(item => item.Id == selector.SheetId);
+            var from = sheet is null ? selector.FileName : Relative(sheet.File);
+            var button = StyleHitButton(selector.Name, from, selector.Color);
+            var path = sheet?.File;
+            if (!string.IsNullOrWhiteSpace(path))
+            {
+                var file = path;
+                button.Click += (_, _) => CompanionStatus.Text = SourceEditor.Open(file, 1);
+            }
+            ToolTip.SetTip(button, selector.Mark);
+            MemberRows.Children.Add(button);
+        }
+        if (template.Unstyled.Count == 0)
+            return;
+        MemberRows.Children.Add(new TextBlock
+        {
+            Text = "NO RULE",
+            Classes = { "section" },
+            Margin = new Avalonia.Thickness(4, 12, 0, 4)
+        });
+        foreach (var missing in template.Unstyled)
+        {
+            var button = StyleHitButton("." + missing, "In this HTML, nothing styles it", "#F0C14A");
+            var file = htmlPath;
+            button.Click += (_, _) => CompanionStatus.Text = SourceEditor.Open(file, 1);
+            MemberRows.Children.Add(button);
+        }
+    }
+
+    string Relative(string file)
+    {
+        if (string.IsNullOrWhiteSpace(_session.Folder) || string.IsNullOrWhiteSpace(file))
+            return file;
+        return Path.GetRelativePath(_session.Folder, file).Replace('\\', '/');
+    }
+
+    static Button StyleHitButton(string name, string from, string accent)
+    {
+        var row = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions("3,*"),
+            ColumnSpacing = 8,
+            MinHeight = 28
+        };
+        row.Children.Add(new Border
+        {
+            Width = 3,
+            CornerRadius = new Avalonia.CornerRadius(2),
+            Background = new SolidColorBrush(Color.Parse(accent)),
+            VerticalAlignment = VerticalAlignment.Stretch
+        });
+        var stack = new StackPanel
+        {
+            Spacing = 1,
+            VerticalAlignment = VerticalAlignment.Center,
+            HorizontalAlignment = HorizontalAlignment.Stretch
+        };
+        Grid.SetColumn(stack, 1);
+        stack.Children.Add(new TextBlock
+        {
+            Text = name,
+            FontSize = 13,
+            Foreground = new SolidColorBrush(Color.Parse("#F4F6F8")),
+            TextWrapping = TextWrapping.NoWrap,
+            TextTrimming = TextTrimming.CharacterEllipsis
+        });
+        stack.Children.Add(new TextBlock
+        {
+            Text = from,
+            FontSize = 11,
+            Foreground = new SolidColorBrush(Color.Parse(accent)),
+            TextWrapping = TextWrapping.NoWrap,
+            TextTrimming = TextTrimming.CharacterEllipsis
+        });
+        row.Children.Add(stack);
+        return new Button
+        {
+            Content = row,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            HorizontalContentAlignment = HorizontalAlignment.Stretch,
+            Classes = { "row" },
+            Background = Brushes.Transparent,
+            Padding = new Avalonia.Thickness(4, 3),
+            MinHeight = 0
+        };
+    }
+
     void OnAskGrok(object? sender, RoutedEventArgs e)
     {
         if (string.IsNullOrWhiteSpace(_session.Folder))
         {
             CompanionStatus.Text = "Open a project first.";
+            return;
+        }
+        if (_stylesTab)
+        {
+            LoadStyles(write: true);
+            RefreshInspector();
+            CompanionStatus.Text = Directory.Exists(Path.Combine(_session.Folder, ".pious"))
+                ? "Scanned the styles and wrote .pious/styles-diagram.json."
+                : "Scanned the styles. No file was written, because this folder has no .pious yet.";
             return;
         }
         if (!Companion.IsLive)
@@ -454,7 +868,10 @@ public partial class MainWindow : Window
             CompanionStatus.Text = "Start the companion first. Nothing was sent.";
             return;
         }
-        DiagramPublisher.PostProposal(_session.Folder);
+        if (_stylesTab)
+            DiagramPublisher.PostStyleProposal(_session.Folder);
+        else
+            DiagramPublisher.PostProposal(_session.Folder);
         _ = Companion.SendInputAsync(GrokLaunch.WakeLine);
         _proposalAnnounced = false;
         CompanionStatus.Text = "Asked the companion for a proposal.";
@@ -529,14 +946,14 @@ public partial class MainWindow : Window
         var distance = Diagram.Mode == PaintMode.Distance && picture is not null
             ? MartinDistance.Measure(picture).FirstOrDefault(item => item.Id == child.Id)
             : default;
-        var score = Diagram.Mode == PaintMode.Distance
-            ? distance.Types > 0 ? "D " + distance.Distance.ToString("0.00") + "  " : child.Abstract ? "abstract  " : ""
+        var meta = Diagram.Mode == PaintMode.Distance
+            ? distance.Types > 0 ? "D " + distance.Distance.ToString("0.00") : child.Abstract ? "abstract" : ""
             : Diagram.Mode == PaintMode.Crap && child.CrapMu is double mu
-            ? mu.ToString("0.0").PadLeft(6) + "  "
-            : child.WorstCc is int cc ? "cc " + cc.ToString().PadLeft(2) + "  " : "         ";
+            ? mu.ToString("0.0")
+            : child.WorstCc is int cc ? "cc " + cc : "";
         var kindList = Diagram.Document is null ? [] : DiagramScene.FileKinds(Diagram.Document, child);
-        var kinds = kindList.Contains("html") || kindList.Contains("scss") ? string.Join(" · ", kindList) : "";
-        var button = RowButton(score + child.Name + (kinds.Length == 0 ? "" : "   " + kinds));
+        var kinds = kindList.Count == 0 ? "" : string.Join(" · ", kindList);
+        var button = OutlineButton(child.Name, meta, kinds, Diagram.NodeColor(child));
         var id = child.Id;
         button.Click += (_, _) => Diagram.Select(id);
         MemberRows.Children.Add(button);
@@ -544,7 +961,7 @@ public partial class MainWindow : Window
 
     void AddMemberRow(DiagramNode owner, DiagramMember member)
     {
-        var button = RowButton(DiagramScene.ShortMember(member));
+        var button = OutlineButton(DiagramScene.ShortMember(member), "", "", Diagram.MemberColor(member));
         var line = member.Line;
         button.Click += (_, _) =>
         {
@@ -555,18 +972,53 @@ public partial class MainWindow : Window
         MemberRows.Children.Add(button);
     }
 
-    static Button RowButton(string label) => new()
+    static Button OutlineButton(string name, string meta, string kinds, string accent)
     {
-        Content = label,
-        HorizontalAlignment = HorizontalAlignment.Stretch,
-        HorizontalContentAlignment = HorizontalAlignment.Left,
+        var row = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions("3,*"),
+            ColumnSpacing = 8,
+            MinHeight = 28
+        };
+        row.Children.Add(new Border
+        {
+            Width = 3,
+            CornerRadius = new Avalonia.CornerRadius(2),
+            Background = new SolidColorBrush(Color.Parse(accent)),
+            VerticalAlignment = VerticalAlignment.Stretch
+        });
+        var stack = new StackPanel { Spacing = 1, VerticalAlignment = VerticalAlignment.Center };
+        Grid.SetColumn(stack, 1);
+        stack.Children.Add(Trimmed(name, 13, "#F4F6F8", 200));
+        var detail = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        if (!string.IsNullOrWhiteSpace(meta))
+            detail.Children.Add(Trimmed(meta, 11, accent, 72));
+        if (!string.IsNullOrWhiteSpace(kinds))
+            detail.Children.Add(Trimmed(kinds, 11, "#9AA3B2", 120));
+        if (detail.Children.Count > 0)
+            stack.Children.Add(detail);
+        row.Children.Add(stack);
+        return new Button
+        {
+            Content = row,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            HorizontalContentAlignment = HorizontalAlignment.Stretch,
+            Classes = { "row" },
+            Background = Brushes.Transparent,
+            Padding = new Avalonia.Thickness(4, 3),
+            MinHeight = 0
+        };
+    }
+
+    static TextBlock Trimmed(string text, double size, string color, double width) => new()
+    {
+        Text = text,
         FontFamily = new FontFamily("Cascadia Mono,Consolas,monospace"),
-        FontSize = 13,
-        Classes = { "row" },
-        Background = Brushes.Transparent,
-        Foreground = new SolidColorBrush(Color.Parse("#F4F6F8")),
-        Padding = new Avalonia.Thickness(2, 4),
-        MinHeight = 0
+        FontSize = size,
+        Foreground = new SolidColorBrush(Color.Parse(color)),
+        TextWrapping = TextWrapping.NoWrap,
+        TextTrimming = TextTrimming.CharacterEllipsis,
+        MaxWidth = width
     };
 
     async void OnGenerate(object? sender, RoutedEventArgs e)

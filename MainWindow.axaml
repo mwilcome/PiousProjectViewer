@@ -7,7 +7,8 @@
         mc:Ignorable="d" d:DesignWidth="1100" d:DesignHeight="720"
         x:Class="PiousProjectViewer.MainWindow"
         Title="Pious Project Viewer"
-        Width="1100" Height="720"
+        Width="1240" Height="720"
+        MinWidth="680"
         KeyDown="OnKeyDown"
         Background="#0E1014"
         Foreground="#F4F6F8"
@@ -32,6 +33,20 @@
         <Style Selector="Button.side:disabled">
             <Setter Property="Opacity" Value="0.45" />
         </Style>
+        <Style Selector="Button.back">
+            <Setter Property="Height" Value="28" />
+            <Setter Property="MinHeight" Value="28" />
+            <Setter Property="MinWidth" Value="64" />
+            <Setter Property="Padding" Value="12,0" />
+            <Setter Property="HorizontalAlignment" Value="Right" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.back /template/ ContentPresenter">
+            <Setter Property="Padding" Value="0,1,0,0" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+        </Style>
         <Style Selector="Button.side.primary">
             <Setter Property="Background" Value="#1F8A5B" />
             <Setter Property="BorderBrush" Value="#1F8A5B" />
@@ -54,7 +69,7 @@
             <Setter Property="Padding" Value="8,4" />
         </Style>
         <Style Selector="Button.row:pointerover /template/ ContentPresenter">
-            <Setter Property="Background" Value="#1C212B" />
+            <Setter Property="Background" Value="#1A2030" />
         </Style>
         <Style Selector="TextBlock.section">
             <Setter Property="FontSize" Value="11" />
@@ -78,23 +93,94 @@
         <Style Selector="RadioButton">
             <Setter Property="Foreground" Value="#F4F6F8" />
             <Setter Property="FontSize" Value="13" />
-            <Setter Property="Padding" Value="0,2" />
+            <Setter Property="Padding" Value="8,4,0,4" />
         </Style>
         <Style Selector="ComboBox">
             <Setter Property="MinHeight" Value="32" />
             <Setter Property="CornerRadius" Value="8" />
         </Style>
+        <Style Selector="Border.sash">
+            <Setter Property="Background" Value="#232833" />
+            <Setter Property="Cursor" Value="SizeWestEast" />
+        </Style>
+        <Style Selector="Border.sash:pointerover">
+            <Setter Property="Background" Value="#3D4658" />
+        </Style>
+        <Style Selector="Border.grip">
+            <Setter Property="Background" Value="#232833" />
+            <Setter Property="BorderBrush" Value="#4A5368" />
+            <Setter Property="Cursor" Value="SizeWestEast" />
+            <Setter Property="Width" Value="14" />
+            <Setter Property="Height" Value="28" />
+            <Setter Property="ZIndex" Value="4" />
+        </Style>
+        <Style Selector="Border.grip:pointerover">
+            <Setter Property="Background" Value="#3D4658" />
+        </Style>
     </Window.Styles>
-    <Grid ColumnDefinitions="*,312" RowDefinitions="5*,Auto,2*">
-        <diagram:DiagramView x:Name="Diagram" Grid.Row="0" Grid.Column="0" />
+    <Grid x:Name="Shell" RowDefinitions="5*,Auto,2*">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="268" MinWidth="6" />
+            <ColumnDefinition Width="*" MinWidth="120" />
+            <ColumnDefinition Width="300" MinWidth="6" />
+        </Grid.ColumnDefinitions>
+        <Border Grid.Row="0" Grid.RowSpan="3" Grid.Column="0"
+                Background="#101218"
+                BorderBrush="#232833"
+                BorderThickness="0,0,1,0"
+                ClipToBounds="True">
+            <DockPanel>
+            <Border x:Name="LeftSash"
+                    DockPanel.Dock="Right"
+                    Width="6"
+                    Classes="sash"
+                    PointerPressed="OnSashPressed"
+                    PointerMoved="OnSashMoved"
+                    PointerReleased="OnSashReleased"
+                    PointerCaptureLost="OnSashReleased" />
+            <DockPanel x:Name="OutlineBody" Margin="14,16,12,12">
+                <StackPanel DockPanel.Dock="Top" Spacing="6">
+                    <TextBlock Classes="section" Text="OUTLINE" />
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock x:Name="PathText"
+                                   FontSize="14"
+                                   FontWeight="SemiBold"
+                                   TextWrapping="Wrap"
+                                   VerticalAlignment="Center" />
+                        <Button x:Name="BackButton"
+                                Grid.Column="1"
+                                Classes="side back"
+                                Content="Back"
+                                Margin="8,0,0,0"
+                                VerticalAlignment="Center"
+                                IsVisible="False"
+                                Click="OnBack" />
+                    </Grid>
+                    <TextBlock x:Name="DetailText" Classes="hint" />
+                    <TextBlock x:Name="ListHeading"
+                               FontSize="13"
+                               FontWeight="SemiBold"
+                               IsVisible="False" />
+                </StackPanel>
+                <ScrollViewer x:Name="OutlineScroll"
+                              HorizontalScrollBarVisibility="Disabled"
+                              VerticalScrollBarVisibility="Auto"
+                              AllowAutoHide="True">
+                    <StackPanel x:Name="MemberRows" Spacing="1" />
+                </ScrollViewer>
+            </DockPanel>
+            </DockPanel>
+        </Border>
+        <diagram:DiagramView x:Name="Diagram" Grid.Row="0" Grid.Column="1" />
+        <diagram:StyleCanvas x:Name="StylePictureView" Grid.Row="0" Grid.Column="1" IsVisible="False" />
         <GridSplitter Grid.Row="1"
-                      Grid.Column="0"
+                      Grid.Column="1"
                       Height="5"
                       HorizontalAlignment="Stretch"
                       ResizeDirection="Rows"
                       Background="#16181D" />
         <Border Grid.Row="2"
-                Grid.Column="0"
+                Grid.Column="1"
                 BorderThickness="0,1,0,0"
                 BorderBrush="#232833"
                 Background="#0E1014">
@@ -120,12 +206,71 @@
                                           Foreground="#D5DBE6" />
             </DockPanel>
         </Border>
-        <Border Grid.Row="0" Grid.RowSpan="3" Grid.Column="1"
+        <Border x:Name="LeftGrip"
+                Grid.Column="1"
+                Grid.RowSpan="3"
+                Classes="grip"
+                HorizontalAlignment="Left"
+                VerticalAlignment="Center"
+                CornerRadius="0,4,4,0"
+                BorderThickness="0,1,1,1"
+                Margin="-1,0,0,0"
+                PointerPressed="OnSashPressed"
+                PointerMoved="OnSashMoved"
+                PointerReleased="OnSashReleased"
+                PointerCaptureLost="OnSashReleased">
+            <Path Data="M 4.5,2 L 1.5,6.5 L 4.5,11"
+                  Stroke="#C5CAD3"
+                  StrokeThickness="1.4"
+                  StrokeLineCap="Round"
+                  StrokeJoin="Round"
+                  Width="6"
+                  Height="13"
+                  Stretch="None"
+                  HorizontalAlignment="Center"
+                  VerticalAlignment="Center" />
+        </Border>
+        <Border x:Name="RightGrip"
+                Grid.Column="1"
+                Grid.RowSpan="3"
+                Classes="grip"
+                HorizontalAlignment="Right"
+                VerticalAlignment="Center"
+                CornerRadius="4,0,0,4"
+                BorderThickness="1,1,0,1"
+                Margin="0,0,-1,0"
+                PointerPressed="OnSashPressed"
+                PointerMoved="OnSashMoved"
+                PointerReleased="OnSashReleased"
+                PointerCaptureLost="OnSashReleased">
+            <Path Data="M 1.5,2 L 4.5,6.5 L 1.5,11"
+                  Stroke="#C5CAD3"
+                  StrokeThickness="1.4"
+                  StrokeLineCap="Round"
+                  StrokeJoin="Round"
+                  Width="6"
+                  Height="13"
+                  Stretch="None"
+                  HorizontalAlignment="Center"
+                  VerticalAlignment="Center" />
+        </Border>
+        <Border Grid.Row="0" Grid.RowSpan="3" Grid.Column="2"
                 Background="#12141A"
                 BorderBrush="#232833"
                 BorderThickness="1,0,0,0"
-                Padding="0">
-            <ScrollViewer HorizontalScrollBarVisibility="Disabled"
+                Padding="0"
+                ClipToBounds="True">
+            <DockPanel>
+            <Border x:Name="RightSash"
+                    DockPanel.Dock="Left"
+                    Width="6"
+                    Classes="sash"
+                    PointerPressed="OnSashPressed"
+                    PointerMoved="OnSashMoved"
+                    PointerReleased="OnSashReleased"
+                    PointerCaptureLost="OnSashReleased" />
+            <ScrollViewer x:Name="ToolsBody"
+                          HorizontalScrollBarVisibility="Disabled"
                           VerticalScrollBarVisibility="Auto"
                           AllowAutoHide="True">
                 <StackPanel Margin="16,16,12,12">
@@ -153,13 +298,17 @@
                     <Border Classes="group">
                         <StackPanel Spacing="6">
                             <TextBlock Classes="section" Text="DIAGRAM" />
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button x:Name="ClassesTab" Classes="side" Content="Classes" MinHeight="28" MinWidth="88" HorizontalAlignment="Left" HorizontalContentAlignment="Center" Click="OnClassesTab" />
+                                <Button x:Name="StylesTab" Classes="side" Content="Styles" MinHeight="28" MinWidth="88" HorizontalAlignment="Left" HorizontalContentAlignment="Center" IsVisible="False" Click="OnStylesTab" />
+                            </StackPanel>
                             <Button x:Name="RefreshButton"
                                     Classes="side"
                                     Content="Refresh diagram"
                                     IsEnabled="False"
                                     Click="OnAskGrok"
                                     ToolTip.Tip="Start the companion first." />
-                            <TextBlock Classes="hint" Text="Runs the tests, then redraws." />
+                            <TextBlock x:Name="RefreshHint" Classes="hint" Text="Runs the tests, then redraws." />
                             <Button x:Name="ProposalButton"
                                     Classes="side"
                                     Content="Generate proposal"
@@ -198,7 +347,7 @@
                                        Text="Not started." />
                         </StackPanel>
                     </Border>
-                    <Border Classes="group">
+                    <Border x:Name="ColorGroup" Classes="group">
                         <StackPanel Spacing="6">
                             <TextBlock Classes="section" Text="COLOR BY" />
                             <RadioButton x:Name="ComplexityMode"
@@ -216,44 +365,19 @@
                                          IsCheckedChanged="OnMode" />
                             <TextBlock x:Name="ColorHint" Classes="hint" />
                             <WrapPanel x:Name="LegendRow" />
-                            <Button x:Name="DeclutterButton"
-                                    Classes="side"
-                                    Content="Hide wires"
-                                    Click="OnDeclutter"
-                                    ToolTip.Tip="Hide the wires on screen. The uses stay." />
-                            <TextBlock x:Name="WireHint" Classes="hint" Text="Hides the lines. The uses stay." />
                         </StackPanel>
                     </Border>
-                    <StackPanel Spacing="4" Margin="0,0,0,8">
-                        <TextBlock Classes="section" Text="OUTLINE" />
-                        <Grid ColumnDefinitions="*,Auto">
-                            <TextBlock x:Name="PathText"
-                                       FontSize="13"
-                                       FontWeight="SemiBold"
-                                       TextWrapping="Wrap"
-                                       VerticalAlignment="Center" />
-                            <Button x:Name="BackButton"
-                                    Grid.Column="1"
-                                    Classes="side"
-                                    Content="Back"
-                                    MinHeight="28"
-                                    MinWidth="64"
-                                    Padding="10,2"
-                                    Margin="8,0,0,0"
-                                    HorizontalAlignment="Right"
-                                    HorizontalContentAlignment="Center"
-                                    IsVisible="False"
-                                    Click="OnBack" />
-                        </Grid>
-                        <TextBlock x:Name="DetailText" Classes="hint" />
-                        <TextBlock x:Name="ListHeading"
-                                   FontSize="13"
-                                   FontWeight="SemiBold"
-                                   IsVisible="False" />
-                    </StackPanel>
-                    <StackPanel x:Name="MemberRows" Spacing="1" />
+                    <Border x:Name="StyleLegend" Classes="group" IsVisible="False">
+                        <StackPanel Spacing="6">
+                            <TextBlock Classes="section" Text="STYLES" />
+                            <TextBlock Classes="hint" Text="Green has one home and hits a template. Rose is the same name in several files, or the same chunk under different names." />
+                            <WrapPanel x:Name="StyleSwatches" />
+                            <TextBlock Classes="hint" Text="Gold is a global rule used once, a local rule that hits other templates, a selector that hits nothing, or a class in the HTML that nothing styles." />
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
             </ScrollViewer>
+            </DockPanel>
         </Border>
     </Grid>
 </Window>
