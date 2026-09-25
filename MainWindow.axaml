@@ -379,9 +379,9 @@
                     <Border x:Name="StyleLegend" Classes="group" IsVisible="False">
                         <StackPanel Spacing="6">
                             <TextBlock Classes="section" Text="STYLES" />
-                            <TextBlock Classes="hint" Text="Green has one home and hits a template. Red is the same name in several files, or the same chunk under different names." />
+                            <TextBlock Classes="hint" Text="Fold into the shared file: a shared stylesheet already has this class, and other files define it too. Create a shared home: the same name is in several files and no shared file owns it. Color is how many files, not which job." />
                             <WrapPanel x:Name="StyleSwatches" />
-                            <TextBlock Classes="hint" Text="Gold is a global rule used once, a local rule that hits other templates, a selector that hits nothing, or a class in the HTML that nothing styles." />
+                            <TextBlock Classes="hint" Text="A row under Fold into the shared file can also be a page that rebuilt a shared class under a new name." />
                         </StackPanel>
                     </Border>
                 </StackPanel>

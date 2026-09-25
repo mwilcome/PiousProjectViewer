@@ -24,6 +24,9 @@ public partial class MainWindow : Window
     StylePicture? _styles;
     bool _companionRunning;
     bool _showingProposal;
+    bool _showingStyleProposal;
+    bool _styleProposalAnnounced;
+    bool _showCalmStyles;
     bool _proposalAnnounced;
     ClassCardWindow? _cardWindow;
     bool _ready;
@@ -115,6 +118,8 @@ public partial class MainWindow : Window
         if (e.Key != Key.Escape)
             return;
         if (_stylesTab && StylePictureView.SelectedBox is not null)
+            StylePictureView.ClearBox();
+        else if (_stylesTab && StylePictureView.Problem is not null)
             StylePictureView.ClearSelection();
         else
             Diagram.GoBack();
@@ -124,6 +129,11 @@ public partial class MainWindow : Window
     void OnBack(object? sender, RoutedEventArgs e)
     {
         if (_stylesTab && StylePictureView.SelectedBox is not null)
+        {
+            StylePictureView.ClearBox();
+            return;
+        }
+        if (_stylesTab && StylePictureView.Problem is not null)
         {
             StylePictureView.ClearSelection();
             return;
@@ -322,8 +332,11 @@ public partial class MainWindow : Window
             BackButton.IsVisible = Diagram.CanGoBack;
         }
         var proposal = folderOpen && File.Exists(DiagramPublisher.ProposalPath(_session.Folder!));
+        var styleProposal = folderOpen && File.Exists(StyleProposalPath(_session.Folder!));
         ViewText.Text = _stylesTab
-            ? "Changes one style rule. The scan stays."
+            ? !styleProposal
+                ? "Asks for one style fix. The scan stays."
+                : _showingStyleProposal ? "Showing the proposal." : "How it is. The proposal is ready."
             : !proposal
             ? "Writes a second picture. The scan stays."
             : _showingProposal ? "Showing the proposal." : "Showing the scanned diagram.";
@@ -337,12 +350,15 @@ public partial class MainWindow : Window
         ToolTip.SetTip(ProposalButton, !live
             ? "Start the companion first."
             : _stylesTab
-                ? "Asks the companion to change one style rule. The picture stays."
+                ? "Asks for one style fix. The scan stays."
                 : "Asks the companion to move one type. The picture stays.");
-        SwitchProposalButton.IsVisible = !_stylesTab && proposal;
-        SwitchProposalButton.Content = _showingProposal ? "Switch to scanned diagram" : "Switch to proposal";
-        SetPrimary(SwitchProposalButton, proposal && !_showingProposal);
-        ToolTip.SetTip(SwitchProposalButton, _showingProposal ? "Shows the scanned diagram." : "Shows the proposal.");
+        var showing = _stylesTab ? _showingStyleProposal : _showingProposal;
+        SwitchProposalButton.IsVisible = _stylesTab ? styleProposal : proposal;
+        SwitchProposalButton.Content = _stylesTab
+            ? showing ? "How it is" : "Proposal"
+            : showing ? "Switch to scanned diagram" : "Switch to proposal";
+        SetPrimary(SwitchProposalButton, (_stylesTab ? styleProposal : proposal) && !showing);
+        ToolTip.SetTip(SwitchProposalButton, showing ? "Shows how it is now." : "Shows the proposal.");
         StartCompanionButton.Content = live ? "Restart companion" : "Start companion";
         var recognized = !string.IsNullOrWhiteSpace(_session.Folder) && Scanners.Resolve(_session.Folder, _language) is not null;
         var hasRecipe = recognized && File.Exists(DiagramPublisher.RecipePath(_session.Folder!));
@@ -617,8 +633,16 @@ public partial class MainWindow : Window
         column.Width = new GridLength(Math.Max(SashSize, Math.Round(width)));
     }
 
+    static string StyleProposalPath(string folder) => Path.Combine(folder, ".pious", "styles-proposal.json");
+
     void ShowStyleOutline()
     {
+        if (_showingStyleProposal && !string.IsNullOrWhiteSpace(_session.Folder))
+        {
+            FillStyleProposal();
+            return;
+        }
+        StylePictureView.SetProposal(null);
         if (_styles is null)
         {
             PathText.Text = "Styles";
@@ -629,10 +653,19 @@ public partial class MainWindow : Window
             return;
         }
         var template = _styles.Templates.FirstOrDefault(item => item.Id == StylePictureView.SelectedBox);
+        var problem = StyleProblems.Build(_styles).FirstOrDefault(item => item.Id == StylePictureView.Problem);
+        if (problem is not null)
+        {
+            FillProblem(problem);
+            return;
+        }
         if (template is null)
         {
+            var problems = StyleProblems.Build(_styles);
             PathText.Text = "Styles";
-            DetailText.Text = _styles.Selectors.Count + " selectors.";
+            DetailText.Text = problems.Count == 0
+                ? "No style problems."
+                : "Fold into the shared file: a shared home already exists. Create a shared home: the name is copied and nothing owns it.";
             ListHeading.IsVisible = false;
             BackButton.IsVisible = false;
             FillStyleList();
@@ -654,9 +687,9 @@ public partial class MainWindow : Window
     void FillStyleLegend()
     {
         StyleSwatches.Children.Clear();
-        StyleSwatches.Children.Add(Swatch("#3DDC97", "One home"));
-        StyleSwatches.Children.Add(Swatch("#F0C14A", "Worth a look"));
-        StyleSwatches.Children.Add(Swatch("#FF5C7A", "Duplicated"));
+        StyleSwatches.Children.Add(Swatch("#FF5C7A", "6 or more files"));
+        StyleSwatches.Children.Add(Swatch("#F0C14A", "3 to 5 files"));
+        StyleSwatches.Children.Add(Swatch("#8B93A7", "2 files"));
     }
 
     void FillStyleList()
@@ -664,21 +697,180 @@ public partial class MainWindow : Window
         MemberRows.Children.Clear();
         if (_styles is null)
             return;
-        foreach (var selector in _styles.Selectors)
+        var problems = StyleProblems.Build(_styles);
+        AddProblemGroup("FOLD INTO THE SHARED FILE", problems.Where(problem => problem.Kind == "fold"));
+        AddProblemGroup("CREATE A SHARED HOME", problems.Where(problem => problem.Kind == "promote"));
+        var calm = StyleProblems.Calm(_styles);
+        if (calm.Count == 0)
+            return;
+        var hidden = new Button
         {
-            var button = OutlineButton(selector.Name, selector.Mark, selector.FileName, selector.Color);
-            var name = selector.Name;
-            button.Click += (_, _) => StylePictureView.Select(name);
+            Content = (_showCalmStyles ? "Hide" : "Hidden") + " (" + calm.Count + ")",
+            Classes = { "row" },
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            HorizontalContentAlignment = HorizontalAlignment.Left,
+            Background = Brushes.Transparent,
+            Padding = new Avalonia.Thickness(4, 8, 4, 4)
+        };
+        hidden.Click += (_, _) =>
+        {
+            _showCalmStyles = !_showCalmStyles;
+            FillStyleList();
+        };
+        MemberRows.Children.Add(hidden);
+        if (!_showCalmStyles)
+            return;
+        foreach (var (name, file) in calm)
+            MemberRows.Children.Add(StyleHitButton(name, "one home · " + file, "#8B93A7"));
+    }
+
+    void AddProblemGroup(string heading, IEnumerable<StyleProblem> problems)
+    {
+        var items = problems.ToList();
+        if (items.Count == 0)
+            return;
+        MemberRows.Children.Add(new TextBlock
+        {
+            Text = heading,
+            Classes = { "section" },
+            Margin = new Avalonia.Thickness(4, 10, 0, 4)
+        });
+        foreach (var problem in items)
+        {
+            var button = StyleHitButton(problem.Title, problem.Brief, problem.Color);
+            var id = problem.Id;
+            button.Click += (_, _) => StylePictureView.SelectProblem(id);
             MemberRows.Children.Add(button);
         }
-        foreach (var template in _styles.Templates)
+    }
+
+    void FillProblem(StyleProblem problem)
+    {
+        PathText.Text = problem.Title;
+        DetailText.Text = "Stylesheets are one group. HTML files are the other. Click a row to highlight it.";
+        ListHeading.IsVisible = false;
+        BackButton.IsVisible = true;
+        MemberRows.Children.Clear();
+        if (problem.Kind is "fold" or "promote")
         {
-            foreach (var missing in template.Unstyled)
-            {
-                var button = OutlineButton("." + missing, "no rule", template.Name, "#F0C14A");
-                MemberRows.Children.Add(button);
-            }
+            var rules = _styles!.Selectors.Where(selector => problem.Names.Contains(selector.Name)).ToList();
+            AddSheetRows(rules);
+            AddTemplateRows(rules.SelectMany(rule => rule.Hits));
         }
+        OutlineScroll.Offset = new Avalonia.Vector(0, 0);
+    }
+
+    void FillStyleProposal()
+    {
+        var proposal = StyleProposal.Load(StyleProposalPath(_session.Folder!));
+        PathText.Text = "Proposal";
+        DetailText.Text = proposal is null || string.IsNullOrWhiteSpace(proposal.Summary)
+            ? "The proposal file is there, but it could not be read."
+            : proposal.Summary;
+        ListHeading.IsVisible = false;
+        BackButton.IsVisible = false;
+        MemberRows.Children.Clear();
+        if (proposal is null)
+            return;
+        MemberRows.Children.Add(SectionLabel("THE CHANGE"));
+        if (proposal.Name.Length > 0)
+            MemberRows.Children.Add(StyleHitButton(proposal.Name, proposal.Kind == "fold" ? "Fold into the shared file" : "Create a shared home", "#3DDC97"));
+        foreach (var file in proposal.From)
+            MemberRows.Children.Add(StyleHitButton(Path.GetFileName(file), "remove the copy", "#FF5C7A"));
+        if (proposal.To.Length > 0)
+            MemberRows.Children.Add(StyleHitButton(Path.GetFileName(proposal.To), "the home", "#7EB6D6"));
+        StylePictureView.SetProposal(proposal);
+    }
+
+    void FillNameProblem(string name)
+    {
+        var rules = _styles!.Selectors.Where(selector => selector.Name == name).ToList();
+        AddSheetRows(rules);
+        AddTemplateRows(rules.SelectMany(rule => rule.Hits));
+    }
+
+    void FillChunkProblem()
+    {
+        var rules = _styles!.Selectors.Where(selector => selector.Mark.StartsWith("same chunk", StringComparison.Ordinal)).ToList();
+        if (rules.Count > 0)
+            MemberRows.Children.Add(SectionLabel("RULES  " + rules.Count));
+        foreach (var rule in rules)
+        {
+            var sheet = _styles.Sheets.FirstOrDefault(item => item.Id == rule.SheetId);
+            var from = sheet is null ? rule.FileName : Relative(sheet.File);
+            var button = StyleHitButton(rule.Name, from, rule.Color);
+            var path = sheet?.File;
+            if (!string.IsNullOrWhiteSpace(path))
+            {
+                var file = path;
+                button.Click += (_, _) => CompanionStatus.Text = SourceEditor.Open(file, 1);
+            }
+            MemberRows.Children.Add(button);
+        }
+        AddTemplateRows(rules.SelectMany(rule => rule.Hits));
+    }
+
+    void FillGlobalProblem(string sheetId)
+    {
+        var rules = _styles!.Selectors.Where(selector => selector.SheetId == sheetId).ToList();
+        AddSheetRows(rules);
+        AddTemplateRows(rules.SelectMany(rule => rule.Hits));
+    }
+
+    void AddSheetRows(List<StyleSelector> rules)
+    {
+        var sheets = rules.Select(rule => rule.SheetId).Distinct(StringComparer.Ordinal)
+            .Select(id => _styles!.Sheets.FirstOrDefault(item => item.Id == id))
+            .Where(sheet => sheet is not null)
+            .Cast<StyleSheet>()
+            .ToList();
+        if (sheets.Count == 0)
+            return;
+        MemberRows.Children.Add(SectionLabel("STYLESHEETS  " + sheets.Count));
+        foreach (var sheet in sheets)
+        {
+            var button = StyleHitButton(sheet.Name, FolderOf(Relative(sheet.File)), "#7EB6D6");
+            var id = sheet.Id;
+            var file = sheet.File;
+            button.Click += (_, _) =>
+            {
+                StylePictureView.SelectBox(id);
+                CompanionStatus.Text = SourceEditor.Open(file, 1);
+            };
+            MemberRows.Children.Add(button);
+        }
+    }
+
+    void AddTemplateRows(IEnumerable<string> templateIds)
+    {
+        var templates = templateIds.Distinct(StringComparer.Ordinal)
+            .Select(id => _styles!.Templates.FirstOrDefault(item => item.Id == id))
+            .Where(template => template is not null)
+            .Cast<StyleTemplate>()
+            .ToList();
+        if (templates.Count == 0)
+            return;
+        MemberRows.Children.Add(SectionLabel("HTML  " + templates.Count));
+        foreach (var template in templates)
+        {
+            var button = StyleHitButton(template.Name, "HTML", "#E6C27A");
+            var id = template.Id;
+            button.Click += (_, _) => StylePictureView.SelectBox(id);
+            MemberRows.Children.Add(button);
+        }
+    }
+
+    static TextBlock SectionLabel(string text) => new()
+    {
+        Text = text,
+        Classes = { "section" },
+        Margin = new Avalonia.Thickness(4, 12, 0, 4)
+    };
+
+    static string FolderOf(string relative)
+    {
+        var slash = relative.LastIndexOf('/');
+        return slash <= 0 ? relative : relative[..slash];
     }
 
     void FillTemplateStyles(StyleTemplate template, List<StyleSelector> hits)
@@ -821,14 +1013,22 @@ public partial class MainWindow : Window
         if (_showingProposal || string.IsNullOrWhiteSpace(_session.Folder))
             return;
         if (!File.Exists(DiagramPublisher.ProposalPath(_session.Folder)))
-        {
             _proposalAnnounced = false;
+        else if (!_proposalAnnounced)
+        {
+            _proposalAnnounced = true;
+            CompanionStatus.Text = "Proposal is ready. Switch to proposal to see it.";
+        }
+        var stylesReady = File.Exists(StyleProposalPath(_session.Folder));
+        if (!stylesReady)
+        {
+            _styleProposalAnnounced = false;
             return;
         }
-        if (_proposalAnnounced)
+        if (_styleProposalAnnounced)
             return;
-        _proposalAnnounced = true;
-        CompanionStatus.Text = "Proposal is ready. Switch to proposal to see it.";
+        _styleProposalAnnounced = true;
+        CompanionStatus.Text = "Style proposal is ready. Switch to the proposal to see it.";
     }
 
     internal void ReloadDiagram()
@@ -887,7 +1087,12 @@ public partial class MainWindow : Window
             return;
         }
         if (_stylesTab)
-            DiagramPublisher.PostStyleProposal(_session.Folder);
+        {
+            var chosen = _styles is null
+                ? null
+                : StyleProblems.Build(_styles).FirstOrDefault(item => item.Id == StylePictureView.Problem)?.Title;
+            DiagramPublisher.PostStyleProposal(_session.Folder, chosen);
+        }
         else
             DiagramPublisher.PostProposal(_session.Folder);
         _ = Companion.SendInputAsync(GrokLaunch.WakeLine);
@@ -899,6 +1104,14 @@ public partial class MainWindow : Window
     {
         if (string.IsNullOrWhiteSpace(_session.Folder))
             return;
+        if (_stylesTab)
+        {
+            if (!File.Exists(StyleProposalPath(_session.Folder)))
+                return;
+            _showingStyleProposal = !_showingStyleProposal;
+            RefreshInspector();
+            return;
+        }
         if (!File.Exists(DiagramPublisher.ProposalPath(_session.Folder)))
             return;
         _showingProposal = !_showingProposal;

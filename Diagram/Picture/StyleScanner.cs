@@ -39,7 +39,204 @@ public sealed class StyleSelector
     public string FileName { get; set; } = "";
     public string Mark { get; set; } = "one home";
     public string Color { get; set; } = "#3DDC97";
+    public string Body { get; set; } = "";
+    public string Home { get; set; } = "pages";
     public List<string> Hits { get; set; } = [];
+}
+
+public sealed class StyleProblem
+{
+    public string Id { get; init; } = "";
+    public string Title { get; init; } = "";
+    public string Detail { get; init; } = "";
+    public string Brief { get; init; } = "";
+    public string Kind { get; init; } = "";
+    public int Pain { get; init; }
+    public string Color { get; init; } = "#F0C14A";
+    public List<string> Names { get; init; } = [];
+}
+
+public static class StyleProblems
+{
+    public static List<StyleProblem> Build(StylePicture picture)
+    {
+        var problems = new List<StyleProblem>();
+        var selectors = picture.Selectors;
+        var homes = selectors.GroupBy(selector => selector.Name, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.Select(selector => selector.SheetId).Distinct(StringComparer.Ordinal).Count(), StringComparer.Ordinal);
+        foreach (var canon in selectors
+            .Where(selector => homes.GetValueOrDefault(selector.Name) == 1 && selector.Hits.Count >= 3 && selector.Body.Length > 0
+                && picture.Sheets.FirstOrDefault(sheet => sheet.Id == selector.SheetId) is { } canonSheet && StyleHomes.IsShared(canonSheet))
+            .GroupBy(selector => selector.Name, StringComparer.Ordinal)
+            .Select(group => group.First())
+            .OrderByDescending(selector => selector.Hits.Count))
+        {
+            var bare = canon.Name.TrimStart('.');
+            var copies = selectors.Where(selector =>
+                !string.Equals(selector.Name, canon.Name, StringComparison.Ordinal)
+                && selector.SheetId != canon.SheetId
+                && CloseBody(selector.Body, canon.Body)
+                && selector.Hits.All(hit => picture.Templates.FirstOrDefault(template => template.Id == hit)?.Classes.Contains(bare) != true))
+                .ToList();
+            if (copies.Count == 0)
+                continue;
+            var names = copies.Select(selector => selector.Name).Distinct(StringComparer.Ordinal).ToList();
+            problems.Add(new StyleProblem
+            {
+                Id = "problem:share:" + canon.Name,
+                Kind = "fold",
+                Title = canon.Name,
+                Brief = "shared in " + canon.FileName + " · " + copies.Count + (copies.Count == 1 ? " renamed copy" : " renamed copies"),
+                Detail = "The shared class already exists. These pages built their own.",
+                Pain = copies.Count * Math.Max(1, canon.Hits.Count),
+                Color = Heat(copies.Count),
+                Names = names.Prepend(canon.Name).ToList()
+            });
+        }
+        foreach (var group in selectors
+            .Where(selector => homes.GetValueOrDefault(selector.Name) > 1)
+            .GroupBy(selector => selector.Name, StringComparer.Ordinal))
+        {
+            var defs = group.ToList();
+            var files = defs.Select(selector => selector.FileName).Distinct(StringComparer.OrdinalIgnoreCase).Count();
+            var hits = defs.SelectMany(selector => selector.Hits).Distinct(StringComparer.Ordinal).Count();
+            var sharedSheet = defs.Select(selector => picture.Sheets.FirstOrDefault(sheet => sheet.Id == selector.SheetId))
+                .FirstOrDefault(sheet => sheet is not null && StyleHomes.IsShared(sheet));
+            var shared = sharedSheet is not null;
+            problems.Add(new StyleProblem
+            {
+                Id = (shared ? "problem:fold:" : "problem:promote:") + group.Key,
+                Kind = shared ? "fold" : "promote",
+                Title = group.Key,
+                Brief = shared
+                    ? "shared in " + sharedSheet!.Name + " · " + Math.Max(0, files - 1) + " locals"
+                    : "no shared file · " + files + " files · " + hits + (hits == 1 ? " template" : " templates"),
+                Detail = shared
+                    ? "A shared file already has this name. Other files define it too."
+                    : "This name is copied and no shared file owns it.",
+                Pain = files * Math.Max(1, hits),
+                Color = Heat(files),
+                Names = [group.Key]
+            });
+        }
+        return problems.OrderByDescending(problem => problem.Pain).ThenBy(problem => problem.Title, StringComparer.Ordinal).ToList();
+    }
+
+    public static List<(string Name, string File)> Calm(StylePicture picture)
+    {
+        var tangled = Build(picture).SelectMany(problem => problem.Names).ToHashSet(StringComparer.Ordinal);
+        return picture.Selectors
+            .Where(selector => !tangled.Contains(selector.Name))
+            .GroupBy(selector => selector.Name, StringComparer.Ordinal)
+            .Select(group => (group.Key, group.First().FileName))
+            .OrderBy(item => item.Key, StringComparer.Ordinal)
+            .ToList();
+    }
+
+    static string Heat(int files) => files >= 6 ? "#FF5C7A" : files >= 3 ? "#F0C14A" : "#8B93A7";
+
+    static bool CloseBody(string left, string right)
+    {
+        if (left.Length == 0 || right.Length == 0)
+            return false;
+        if (string.Equals(left, right, StringComparison.Ordinal))
+            return true;
+        var a = Props(left);
+        var b = Props(right);
+        if (a.Count < 4 || b.Count < 4)
+            return false;
+        var keys = a.Keys.Union(b.Keys, StringComparer.Ordinal).ToList();
+        var shared = keys.Count(key => a.ContainsKey(key) && b.ContainsKey(key));
+        var diffs = keys.Count(key => !a.TryGetValue(key, out var av) || !b.TryGetValue(key, out var bv) || av != bv);
+        return shared >= 4 && diffs <= 2;
+    }
+
+    static Dictionary<string, string> Props(string body)
+    {
+        var map = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var part in body.Split(';', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var colon = part.IndexOf(':');
+            if (colon <= 0)
+                continue;
+            map[part[..colon]] = part[(colon + 1)..].Trim();
+        }
+        return map;
+    }
+}
+
+public static class StyleHomes
+{
+    public static readonly string[] Order = ["helpers", "defaults", "pieces", "layout", "pages", "themes", "vendors"];
+
+    public static string Label(string home) => home switch
+    {
+        "helpers" => "Helpers",
+        "defaults" => "Defaults",
+        "pieces" => "Reusable",
+        "layout" => "Layout",
+        "pages" => "Pages",
+        "themes" => "Themes",
+        "vendors" => "Vendors",
+        _ => home
+    };
+
+    public static string Of(StyleSheet sheet, int hits)
+    {
+        var path = (sheet.File + "/" + sheet.Name).Replace('\\', '/').ToLowerInvariant();
+        if (path.Contains("/abstracts/") || path.Contains("/utilities/") || path.Contains("/mixins/"))
+            return "helpers";
+        if (path.Contains("/vendor/") || path.Contains("/vendors/"))
+            return "vendors";
+        if (path.Contains("/themes/") || path.Contains("/theme/"))
+            return "themes";
+        if (path.Contains("/layout/") || path.Contains("/layouts/"))
+            return "layout";
+        if (path.Contains("/base/") || path.Contains("reset") || path.Contains("typography"))
+            return "defaults";
+        if (path.Contains("/pages/") || path.Contains(".page."))
+            return "pages";
+        if (IsShared(sheet) && hits >= 2)
+            return "pieces";
+        if (hits <= 1)
+            return "pages";
+        return "pieces";
+    }
+
+    public static bool IsShared(StyleSheet sheet)
+    {
+        var name = sheet.Name;
+        if (name.Contains(".component.", StringComparison.OrdinalIgnoreCase))
+            return false;
+        if (sheet.Global || name.StartsWith('_'))
+            return true;
+        var path = sheet.File.Replace('\\', '/');
+        return path.Contains("/styles/", StringComparison.OrdinalIgnoreCase)
+            || path.Contains("/shared/", StringComparison.OrdinalIgnoreCase);
+    }
+}
+
+public sealed class StyleProposal
+{
+    public string Summary { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string Kind { get; set; } = "";
+    public string To { get; set; } = "";
+    public List<string> From { get; set; } = [];
+    public List<string> Drop { get; set; } = [];
+
+    public static StyleProposal? Load(string path)
+    {
+        try
+        {
+            var json = File.ReadAllText(path);
+            return JsonSerializer.Deserialize<StyleProposal>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
 }
 
 public static class StyleScanner
@@ -120,6 +317,8 @@ public static class StyleScanner
                 FileName = rule.Sheet.Name,
                 Mark = rule.Mark,
                 Color = rule.Color,
+                Body = string.Join(";", rule.Body),
+                Home = StyleHomes.Of(rule.Sheet, rule.Hits.Count),
                 Hits = rule.Hits
             }).OrderBy(item => item.Color == "#FF5C7A" ? 0 : item.Color == "#F0C14A" ? 1 : 2).ThenBy(item => item.Name, StringComparer.Ordinal).ToList()
         };
