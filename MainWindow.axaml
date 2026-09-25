@@ -95,6 +95,11 @@
             <Setter Property="FontSize" Value="13" />
             <Setter Property="Padding" Value="8,4,0,4" />
         </Style>
+        <Style Selector="CheckBox">
+            <Setter Property="Foreground" Value="#F4F6F8" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Padding" Value="8,4,0,4" />
+        </Style>
         <Style Selector="ComboBox">
             <Setter Property="MinHeight" Value="32" />
             <Setter Property="CornerRadius" Value="8" />
@@ -288,6 +293,10 @@
                                        TextWrapping="NoWrap"
                                        TextTrimming="CharacterEllipsis" />
                             <Button x:Name="OpenButton" Classes="side" Content="Open project" Click="OnOpen" />
+                            <CheckBox x:Name="RememberProject"
+                                      Content="Remember project on restart"
+                                      Margin="0,4,0,0"
+                                      IsCheckedChanged="OnRememberProject" />
                             <TextBlock Classes="section" Text="LANGUAGE" Margin="0,8,0,2" />
                             <ComboBox x:Name="LanguageBox"
                                       HorizontalAlignment="Stretch"
@@ -370,7 +379,7 @@
                     <Border x:Name="StyleLegend" Classes="group" IsVisible="False">
                         <StackPanel Spacing="6">
                             <TextBlock Classes="section" Text="STYLES" />
-                            <TextBlock Classes="hint" Text="Green has one home and hits a template. Rose is the same name in several files, or the same chunk under different names." />
+                            <TextBlock Classes="hint" Text="Green has one home and hits a template. Red is the same name in several files, or the same chunk under different names." />
                             <WrapPanel x:Name="StyleSwatches" />
                             <TextBlock Classes="hint" Text="Gold is a global rule used once, a local rule that hits other templates, a selector that hits nothing, or a class in the HTML that nothing styles." />
                         </StackPanel>

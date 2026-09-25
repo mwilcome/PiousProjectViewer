@@ -7,6 +7,8 @@ namespace PiousProjectViewer.Diagram;
 public sealed class Session
 {
     public string? Folder { get; set; }
+    public string? RememberedFolder { get; set; }
+    public bool RememberProject { get; set; }
     public string Mode { get; set; } = "complexity";
     public string Language { get; set; } = "auto";
     public string Agent { get; set; } = "Grok";

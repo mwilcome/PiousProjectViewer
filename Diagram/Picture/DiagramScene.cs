@@ -148,27 +148,67 @@ public static class DiagramScene
 
     public static IReadOnlyList<DiagramMember> Listed(DiagramNode node)
     {
-        var methods = (node.Members ?? [])
-            .Where(member => member.Kind is not ("field" or "html" or "scss"))
+        var members = node.Members ?? [];
+        var files = members.Where(member => member.Kind is "html" or "scss")
+            .OrderBy(member => member.Kind, StringComparer.Ordinal)
+            .ThenBy(member => member.Name, StringComparer.Ordinal)
+            .ToList();
+        var methods = members.Where(member => member.Kind is not ("field" or "html" or "scss"))
             .OrderByDescending(member => member.Crap ?? member.Cc)
             .ThenBy(member => member.Name, StringComparer.Ordinal)
             .Take(12)
             .ToList();
-        if (methods.Count == 0)
-            return (node.Members ?? []).Where(member => member.Kind == "field").Take(8).ToList();
-        return methods;
+        if (files.Count == 0 && methods.Count == 0)
+            return members.Where(member => member.Kind == "field").Take(8).ToList();
+        return files.Concat(methods).ToList();
     }
 
     public static double WidthFor(DiagramNode node)
     {
         if (node.Kind == "foreign")
             return 150;
-        var title = 72 + node.Name.Length * 9.4;
-        var longest = 0;
+        var title = 56 + node.Name.Length * 9.2;
+        var caption = 48 + FitCaption(node).Length * 7.6;
+        var longest = 0d;
         foreach (var line in LinesIn(node))
-            longest = Math.Max(longest, line.Length);
-        return Math.Max(176, Math.Max(title, 80 + longest * 7.4));
+            longest = Math.Max(longest, 64 + line.Length * 8.1);
+        return Math.Clamp(Math.Max(title, Math.Max(caption, longest)), 200, 460);
     }
+
+    static string FitCaption(DiagramNode node)
+    {
+        var kinds = string.Join(" · ", KindLabels(node));
+        var role = node.Role switch
+        {
+            "component" => "component",
+            "injectable" => "service",
+            "directive" => "directive",
+            "pipe" => "pipe",
+            "ngmodule" => "module",
+            _ => ""
+        };
+        var body = kinds.Length == 0 ? "cc 00" : "cc 00   " + kinds;
+        return role.Length == 0 ? body : role + "  " + body;
+    }
+
+    static IReadOnlyList<string> KindLabels(DiagramNode node)
+    {
+        var found = new HashSet<string>(StringComparer.Ordinal);
+        if (node.File is string file)
+            NoteKind(found, file);
+        foreach (var member in node.Members ?? [])
+        {
+            if (member.Kind is "html" or "scss")
+                found.Add(member.Kind);
+            else if (member.File is string memberFile)
+                NoteKind(found, memberFile);
+            else if (member.Kind is "method" or "field")
+                found.Add("ts");
+        }
+        return KindOrder.Where(found.Contains).ToList();
+    }
+
+    static readonly string[] KindOrder = ["ts", "tsx", "jsx", "vue", "svelte", "html", "scss", "cs", "razor", "java"];
 
     public static double HeightFor(DiagramNode node)
     {
@@ -193,8 +233,7 @@ public static class DiagramScene
     {
         var found = new HashSet<string>(StringComparer.Ordinal);
         Collect(node);
-        var order = new[] { "ts", "html", "scss", "cs", "java" };
-        return order.Where(found.Contains).ToList();
+        return KindOrder.Where(found.Contains).ToList();
 
         void Collect(DiagramNode current)
         {
@@ -215,17 +254,32 @@ public static class DiagramScene
 
         void Note(string file)
         {
-            if (file.EndsWith(".ts", StringComparison.OrdinalIgnoreCase))
-                found.Add("ts");
-            else if (file.EndsWith(".html", StringComparison.OrdinalIgnoreCase))
-                found.Add("html");
-            else if (file.EndsWith(".scss", StringComparison.OrdinalIgnoreCase) || file.EndsWith(".css", StringComparison.OrdinalIgnoreCase))
-                found.Add("scss");
-            else if (file.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
-                found.Add("cs");
-            else if (file.EndsWith(".java", StringComparison.OrdinalIgnoreCase))
-                found.Add("java");
+            NoteKind(found, file);
         }
+    }
+
+    static void NoteKind(HashSet<string> found, string file)
+    {
+        if (file.EndsWith(".tsx", StringComparison.OrdinalIgnoreCase))
+            found.Add("tsx");
+        else if (file.EndsWith(".jsx", StringComparison.OrdinalIgnoreCase))
+            found.Add("jsx");
+        else if (file.EndsWith(".vue", StringComparison.OrdinalIgnoreCase))
+            found.Add("vue");
+        else if (file.EndsWith(".svelte", StringComparison.OrdinalIgnoreCase))
+            found.Add("svelte");
+        else if (file.EndsWith(".ts", StringComparison.OrdinalIgnoreCase) || file.EndsWith(".js", StringComparison.OrdinalIgnoreCase))
+            found.Add("ts");
+        else if (file.EndsWith(".html", StringComparison.OrdinalIgnoreCase))
+            found.Add("html");
+        else if (file.EndsWith(".scss", StringComparison.OrdinalIgnoreCase) || file.EndsWith(".css", StringComparison.OrdinalIgnoreCase))
+            found.Add("scss");
+        else if (file.EndsWith(".razor", StringComparison.OrdinalIgnoreCase))
+            found.Add("razor");
+        else if (file.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
+            found.Add("cs");
+        else if (file.EndsWith(".java", StringComparison.OrdinalIgnoreCase))
+            found.Add("java");
     }
 
     public static string DisplayName(string name)

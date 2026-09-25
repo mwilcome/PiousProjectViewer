@@ -10,6 +10,7 @@ public interface ILanguageScanner
     string Name { get; }
     bool SupportsComplexity { get; }
     bool SupportsCrap { get; }
+    bool ShowsStyles { get; }
     bool CanScan(string folder);
     string TestCommand(string folder);
     string MutateCommand(string folder);
@@ -19,7 +20,15 @@ public interface ILanguageScanner
 
 public static class Scanners
 {
-    static readonly ILanguageScanner[] Known = [new CSharpScanner(), new AngularScanner(), new JavaScanner()];
+    static readonly ILanguageScanner[] Known =
+    [
+        new CSharpScanner(),
+        new AngularScanner(),
+        new ReactScanner(),
+        new VueScanner(),
+        new SvelteScanner(),
+        new JavaScanner()
+    ];
 
     public static IReadOnlyList<ILanguageScanner> All => Known;
 

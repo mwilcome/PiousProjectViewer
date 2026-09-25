@@ -47,7 +47,8 @@ public static class StyleScanner
     static readonly string[] Skip = ["node_modules", "dist", ".git", "coverage", ".angular", "bin", "obj"];
     static readonly Regex RulePattern = new(@"([^{}/]+)\{([^{}]*)\}", RegexOptions.Compiled);
     static readonly Regex ClassInSelector = new(@"\.([A-Za-z_][\w-]*)", RegexOptions.Compiled);
-    static readonly Regex ClassInHtml = new(@"class\s*=\s*[""']([^""']+)[""']|\[class\.([A-Za-z_][\w-]*)\]", RegexOptions.Compiled);
+    static readonly Regex ClassInHtml = new(@"class(?:Name)?\s*=\s*(?:[""']([^""']+)[""']|\{\s*[""'`]([^""'`]+)[""'`])|\[class\.([A-Za-z_][\w-]*)\]|class:([A-Za-z_][\w-]*)", RegexOptions.Compiled);
+    static readonly Regex StyleBlock = new(@"<style\b[^>]*>(.*?)</style>", RegexOptions.Compiled | RegexOptions.Singleline | RegexOptions.IgnoreCase);
     static readonly Regex DeclPattern = new(@"([A-Za-z-]+)\s*:\s*([^;]+);", RegexOptions.Compiled);
 
     public static StylePicture Scan(string folder)
@@ -56,24 +57,36 @@ public static class StyleScanner
         var templates = new List<(StyleTemplate Template, HashSet<string> Classes)>();
         var seenSheets = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var path in GlobalFiles(folder))
-            AddSheet(path, true, null);
+            AddSheet(path, true, null, null);
         foreach (var path in Walk(folder, ".scss").Concat(Walk(folder, ".css")))
         {
             if (seenSheets.Contains(path))
                 continue;
-            var html = SiblingHtml(path);
-            AddSheet(path, false, html);
+            var html = SiblingMarkup(path);
+            AddSheet(path, false, html, null);
         }
-        foreach (var html in Walk(folder, ".html"))
+        foreach (var markup in MarkupFiles(folder))
         {
-            if (templates.Any(item => item.Template.File.Equals(html, StringComparison.OrdinalIgnoreCase)))
+            if (templates.Any(item => item.Template.File.Equals(markup, StringComparison.OrdinalIgnoreCase)))
                 continue;
-            var classes = ClassesIn(File.ReadAllText(html));
+            string text;
+            try
+            {
+                text = File.ReadAllText(markup);
+            }
+            catch (IOException)
+            {
+                continue;
+            }
+            var style = StyleText(text);
+            if (style is not null)
+                AddSheet(markup, false, null, style);
+            var classes = ClassesIn(text);
             templates.Add((new StyleTemplate
             {
-                Id = "html:" + Relative(folder, html),
-                Name = Path.GetFileName(html),
-                File = html,
+                Id = "html:" + Relative(folder, markup),
+                Name = Path.GetFileName(markup),
+                File = markup,
                 Classes = classes.OrderBy(name => name, StringComparer.Ordinal).ToList()
             }, classes));
         }
@@ -111,12 +124,24 @@ public static class StyleScanner
             }).OrderBy(item => item.Color == "#FF5C7A" ? 0 : item.Color == "#F0C14A" ? 1 : 2).ThenBy(item => item.Name, StringComparer.Ordinal).ToList()
         };
 
-        void AddSheet(string path, bool global, string? html)
+        void AddSheet(string path, bool global, string? html, string? text)
         {
             if (!seenSheets.Add(path) || !File.Exists(path))
                 return;
             var id = (global ? "global:" : "local:") + Relative(folder, path);
             string? templateId = html is null ? null : "html:" + Relative(folder, html);
+            var body = text;
+            if (body is null)
+            {
+                try
+                {
+                    body = File.ReadAllText(path);
+                }
+                catch (IOException)
+                {
+                    return;
+                }
+            }
             sheets.Add((new StyleSheet
             {
                 Id = id,
@@ -124,7 +149,7 @@ public static class StyleScanner
                 File = path,
                 Global = global,
                 TemplateId = templateId
-            }, File.ReadAllText(path)));
+            }, body));
             if (html is not null && File.Exists(html) && templates.All(item => !item.Template.File.Equals(html, StringComparison.OrdinalIgnoreCase)))
             {
                 var classes = ClassesIn(File.ReadAllText(html));
@@ -200,13 +225,32 @@ public static class StyleScanner
         var names = new HashSet<string>(StringComparer.Ordinal);
         foreach (Match match in ClassInHtml.Matches(html))
         {
-            if (match.Groups[2].Success)
-                names.Add(match.Groups[2].Value);
-            foreach (var part in match.Groups[1].Value.Split([' ', '\t', '\r', '\n'], StringSplitOptions.RemoveEmptyEntries))
-                names.Add(part);
+            AddClassList(names, match.Groups[1].Value);
+            AddClassList(names, match.Groups[2].Value);
+            if (match.Groups[3].Success)
+                names.Add(match.Groups[3].Value);
+            if (match.Groups[4].Success)
+                names.Add(match.Groups[4].Value);
         }
         return names;
     }
+
+    static void AddClassList(HashSet<string> names, string text)
+    {
+        foreach (var part in text.Split([' ', '\t', '\r', '\n'], StringSplitOptions.RemoveEmptyEntries))
+            names.Add(part);
+    }
+
+    static string? StyleText(string text)
+    {
+        var matches = StyleBlock.Matches(text);
+        if (matches.Count == 0)
+            return null;
+        return string.Join("\n", matches.Select(match => match.Groups[1].Value));
+    }
+
+    static IEnumerable<string> MarkupFiles(string folder) =>
+        Walk(folder, ".html").Concat(Walk(folder, ".tsx")).Concat(Walk(folder, ".jsx")).Concat(Walk(folder, ".vue")).Concat(Walk(folder, ".svelte"));
 
     static string Strip(string text)
     {
@@ -228,6 +272,12 @@ public static class StyleScanner
                         yield return path;
                 }
             }
+        }
+        foreach (var name in new[] { "src/styles.scss", "src/styles.css", "src/index.css", "src/main.css", "src/app/globals.css" })
+        {
+            var path = Path.Combine(folder, name.Replace('/', Path.DirectorySeparatorChar));
+            if (File.Exists(path))
+                yield return path;
         }
     }
 
@@ -262,14 +312,24 @@ public static class StyleScanner
         }
     }
 
-    static string? SiblingHtml(string style)
+    static string? SiblingMarkup(string style)
     {
+        var dir = Path.GetDirectoryName(style)!;
         var stem = Path.GetFileName(style);
-        var marker = stem.IndexOf(".component.", StringComparison.OrdinalIgnoreCase);
-        if (marker < 0)
-            return null;
-        var candidate = Path.Combine(Path.GetDirectoryName(style)!, stem[..marker] + ".component.html");
-        return File.Exists(candidate) ? candidate : null;
+        foreach (var suffix in new[] { ".module.scss", ".module.css", ".component.scss", ".component.css", ".scss", ".css" })
+        {
+            if (!stem.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
+                continue;
+            stem = stem[..^suffix.Length];
+            break;
+        }
+        foreach (var ext in new[] { ".component.html", ".html", ".tsx", ".jsx", ".vue", ".svelte" })
+        {
+            var candidate = Path.Combine(dir, stem + ext);
+            if (File.Exists(candidate))
+                return candidate;
+        }
+        return null;
     }
 
     static string Relative(string folder, string path)

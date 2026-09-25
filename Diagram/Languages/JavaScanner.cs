@@ -8,15 +8,12 @@ namespace PiousProjectViewer.Diagram;
 
 public sealed class JavaScanner : ILanguageScanner
 {
-    static readonly Regex PackagePattern = new(@"^\s*package\s+([\w.]+)\s*;", RegexOptions.Compiled | RegexOptions.Multiline);
-    static readonly Regex TypePattern = new(@"\b(?:class|interface|enum|record)\s+(\w+)", RegexOptions.Compiled);
-    static readonly Regex MethodPattern = new(@"^\s*(?:public|private|protected)\s+(?:static\s+|final\s+|synchronized\s+)*(?:[\w.<>,\[\]]+\s+)+(\w+)\s*\(", RegexOptions.Compiled);
-    static readonly Regex ImportPattern = new(@"^\s*import\s+(?:static\s+)?([\w.]+)\s*;", RegexOptions.Compiled | RegexOptions.Multiline);
     static readonly Regex DecisionPattern = new(@"\b(if|for|while|catch|case)\b|&&|\|\||\?", RegexOptions.Compiled);
 
     public string Name => "Java";
     public bool SupportsComplexity => true;
     public bool SupportsCrap => true;
+    public bool ShowsStyles => false;
 
     public bool CanScan(string folder) =>
         File.Exists(Path.Combine(folder, "pom.xml"))
@@ -73,15 +70,16 @@ public sealed class JavaScanner : ILanguageScanner
                 File = type.File,
                 Line = type.Line,
                 WorstCc = worst == 0 ? null : worst,
+                Abstract = type.Abstract,
                 Members = type.Members
             });
         }
         var names = types.GroupBy(type => type.Name).Where(group => group.Count() == 1).ToDictionary(group => group.Key, group => group.First().Id);
         foreach (var type in types)
         {
-            foreach (Match import in ImportPattern.Matches(File.ReadAllText(type.File)))
+            foreach (var imported in type.Imports)
             {
-                var simple = import.Groups[1].Value.Split('.').Last();
+                var simple = imported.Split('.').Last();
                 if (names.TryGetValue(simple, out var target) && target != type.Id)
                     document.Edges.Add(new DiagramEdge { From = type.Id, To = target });
             }
@@ -94,41 +92,17 @@ public sealed class JavaScanner : ILanguageScanner
 
     static IEnumerable<Found> ReadFile(string file)
     {
-        var lines = File.ReadAllLines(file);
-        var text = string.Join('\n', lines);
-        var package = PackagePattern.Match(text);
-        var spaceName = package.Success ? package.Groups[1].Value : "default";
-        var space = "ns:" + spaceName;
-        foreach (Match match in TypePattern.Matches(text))
+        string text;
+        try
         {
-            var name = match.Groups[1].Value;
-            var line = text[..match.Index].Count(ch => ch == '\n') + 1;
-            var methods = new List<DiagramMember>();
-            var starts = new List<int>();
-            for (var i = line; i < lines.Length; i++)
-            {
-                var method = MethodPattern.Match(lines[i]);
-                if (method.Success)
-                    starts.Add(i);
-                else if (Regex.IsMatch(lines[i], @"^\s*(?:public|private|protected)?\s*" + Regex.Escape(name) + @"\s*\("))
-                    starts.Add(i);
-            }
-            for (var i = 0; i < starts.Count; i++)
-            {
-                var end = i + 1 < starts.Count ? starts[i + 1] : lines.Length;
-                var body = string.Join('\n', lines.Skip(starts[i]).Take(end - starts[i]));
-                var named = MethodPattern.Match(lines[starts[i]]);
-                methods.Add(new DiagramMember
-                {
-                    Name = (named.Success ? named.Groups[1].Value : name) + "()",
-                    Line = starts[i] + 1,
-                    Cc = 1 + DecisionPattern.Matches(body).Count,
-                    IsPublic = lines[starts[i]].Contains("public", StringComparison.Ordinal),
-                    Kind = "method"
-                });
-            }
-            yield return new Found(name, space, "type:" + spaceName + "." + name, file, line, methods);
+            text = File.ReadAllText(file);
         }
+        catch (IOException)
+        {
+            yield break;
+        }
+        foreach (var type in JavaSource.Parse(text, file))
+            yield return type;
     }
 
     static string? Parent(string space)
@@ -165,5 +139,336 @@ public sealed class JavaScanner : ILanguageScanner
         }
     }
 
-    sealed record Found(string Name, string Space, string Id, string File, int Line, List<DiagramMember> Members);
+    sealed record Found(string Name, string Space, string Id, string File, int Line, bool Abstract, List<DiagramMember> Members, List<string> Imports);
+
+    static class JavaSource
+    {
+        static readonly HashSet<string> Modifiers = new(StringComparer.Ordinal)
+        {
+            "public", "private", "protected", "static", "final", "abstract", "sealed", "strictfp", "native", "default", "synchronized", "transitive"
+        };
+        static readonly HashSet<string> Controls = new(StringComparer.Ordinal)
+        {
+            "if", "for", "while", "switch", "catch", "return", "throw", "new", "else", "do", "try", "assert", "break", "continue", "synchronized"
+        };
+
+        public static List<Found> Parse(string text, string file)
+        {
+            var tokens = Tokenize(text);
+            var package = "default";
+            var imports = new List<string>();
+            var found = new List<Found>();
+            for (var i = 0; i < tokens.Count; i++)
+            {
+                if (tokens[i].Text == "package")
+                {
+                    package = Dotted(tokens, ref i);
+                    continue;
+                }
+                if (tokens[i].Text == "import")
+                {
+                    var imported = Dotted(tokens, ref i);
+                    if (imported.Length > 0)
+                        imports.Add(imported);
+                    continue;
+                }
+                if (tokens[i].Text == "@")
+                {
+                    SkipAnnotation(tokens, ref i);
+                    continue;
+                }
+                var modifiers = new List<string>();
+                while (i < tokens.Count && Modifiers.Contains(tokens[i].Text))
+                    modifiers.Add(tokens[i++].Text);
+                if (i >= tokens.Count || tokens[i].Text is not ("class" or "interface" or "enum" or "record"))
+                    continue;
+                var keyword = tokens[i].Text;
+                if (i + 1 >= tokens.Count || !IsWord(tokens[i + 1]))
+                    continue;
+                var name = tokens[i + 1].Text;
+                var line = LineAt(text, tokens[i + 1].Index);
+                var open = FindBrace(tokens, i + 2);
+                if (open < 0)
+                    continue;
+                var close = MatchBrace(tokens, open);
+                var methods = Methods(text, tokens, open, close, name);
+                var spaceName = package;
+                found.Add(new Found(
+                    name,
+                    "ns:" + spaceName,
+                    "type:" + spaceName + "." + name,
+                    file,
+                    line,
+                    keyword == "interface" || modifiers.Contains("abstract"),
+                    methods,
+                    imports));
+                i = close;
+            }
+            return found;
+        }
+
+        static List<DiagramMember> Methods(string text, List<Tok> tokens, int open, int close, string typeName)
+        {
+            var methods = new List<DiagramMember>();
+            var depth = 0;
+            for (var i = open + 1; i < close; i++)
+            {
+                if (tokens[i].Text == "{")
+                {
+                    depth++;
+                    continue;
+                }
+                if (tokens[i].Text == "}")
+                {
+                    depth--;
+                    continue;
+                }
+                if (depth != 0 || tokens[i].Text == "@")
+                {
+                    if (tokens[i].Text == "@")
+                        SkipAnnotation(tokens, ref i);
+                    continue;
+                }
+                var cursor = i;
+                var isPublic = false;
+                while (cursor < close && Modifiers.Contains(tokens[cursor].Text))
+                {
+                    if (tokens[cursor].Text == "public")
+                        isPublic = true;
+                    cursor++;
+                }
+                var paren = IndexOf(tokens, cursor, close, "(", 0);
+                if (paren < 0)
+                    continue;
+                var name = WordBefore(tokens, paren);
+                if (name.Length == 0 || Controls.Contains(name) || !IsWord(tokens[paren - 1]))
+                    continue;
+                var bodyAt = AfterParen(tokens, paren, close);
+                var end = bodyAt;
+                string body = "";
+                if (bodyAt >= 0 && bodyAt < close && tokens[bodyAt].Text == "{")
+                {
+                    end = MatchBrace(tokens, bodyAt);
+                    body = text[tokens[bodyAt].Index..Math.Min(text.Length, tokens[Math.Min(end, tokens.Count - 1)].Index + 1)];
+                    i = end;
+                }
+                else
+                    i = paren;
+                methods.Add(new DiagramMember
+                {
+                    Name = name + "()",
+                    Line = LineAt(text, tokens[paren - 1].Index),
+                    Cc = 1 + DecisionPattern.Matches(body).Count,
+                    IsPublic = isPublic || name == typeName,
+                    Kind = "method"
+                });
+            }
+            return methods;
+        }
+
+        static int AfterParen(List<Tok> tokens, int paren, int limit)
+        {
+            var depth = 0;
+            for (var i = paren; i < limit; i++)
+            {
+                if (tokens[i].Text == "(")
+                    depth++;
+                else if (tokens[i].Text == ")")
+                {
+                    depth--;
+                    if (depth == 0)
+                        return i + 1;
+                }
+            }
+            return -1;
+        }
+
+        static string WordBefore(List<Tok> tokens, int index)
+        {
+            for (var i = index - 1; i >= 0; i--)
+            {
+                if (tokens[i].Text is "<" or ">" or "," or "[" or "]" or "?" or ".")
+                    continue;
+                return IsWord(tokens[i]) ? tokens[i].Text : "";
+            }
+            return "";
+        }
+
+        static int IndexOf(List<Tok> tokens, int start, int limit, string text, int parenDepth)
+        {
+            var paren = 0;
+            var angle = 0;
+            for (var i = start; i < limit; i++)
+            {
+                var token = tokens[i].Text;
+                if (token == "(")
+                    paren++;
+                else if (token == ")")
+                    paren--;
+                else if (token == "<")
+                    angle++;
+                else if (token == ">")
+                    angle = Math.Max(0, angle - 1);
+                else if (token == text && paren == parenDepth && angle == 0)
+                    return i;
+                else if (token is "{" or ";" && paren == 0 && angle == 0)
+                    return -1;
+            }
+            return -1;
+        }
+
+        static int FindBrace(List<Tok> tokens, int start)
+        {
+            var paren = 0;
+            for (var i = start; i < tokens.Count; i++)
+            {
+                var token = tokens[i].Text;
+                if (token == "(")
+                    paren++;
+                else if (token == ")")
+                    paren--;
+                else if (token == "{" && paren == 0)
+                    return i;
+                else if (token == ";" && paren == 0)
+                    return -1;
+            }
+            return -1;
+        }
+
+        static int MatchBrace(List<Tok> tokens, int open)
+        {
+            var depth = 0;
+            for (var i = open; i < tokens.Count; i++)
+            {
+                if (tokens[i].Text == "{")
+                    depth++;
+                else if (tokens[i].Text == "}")
+                {
+                    depth--;
+                    if (depth == 0)
+                        return i;
+                }
+            }
+            return tokens.Count - 1;
+        }
+
+        static string Dotted(List<Tok> tokens, ref int i)
+        {
+            var parts = new List<string>();
+            for (i++; i < tokens.Count && tokens[i].Text != ";"; i++)
+            {
+                if (IsWord(tokens[i]))
+                    parts.Add(tokens[i].Text);
+            }
+            return string.Join(".", parts);
+        }
+
+        static void SkipAnnotation(List<Tok> tokens, ref int i)
+        {
+            i++;
+            while (i < tokens.Count && IsWord(tokens[i]))
+                i++;
+            if (i < tokens.Count && tokens[i].Text == "(")
+            {
+                var depth = 0;
+                for (; i < tokens.Count; i++)
+                {
+                    if (tokens[i].Text == "(")
+                        depth++;
+                    else if (tokens[i].Text == ")")
+                    {
+                        depth--;
+                        if (depth == 0)
+                            break;
+                    }
+                }
+            }
+            if (i < tokens.Count)
+                i--;
+        }
+
+        static bool IsWord(Tok token) => token.Kind == TokKind.Word;
+
+        static int LineAt(string text, int index) => text[..Math.Clamp(index, 0, text.Length)].Count(ch => ch == '\n') + 1;
+
+        static List<Tok> Tokenize(string text)
+        {
+            var tokens = new List<Tok>();
+            for (var i = 0; i < text.Length;)
+            {
+                var c = text[i];
+                if (char.IsWhiteSpace(c))
+                {
+                    i++;
+                    continue;
+                }
+                if (c == '/' && i + 1 < text.Length && text[i + 1] == '/')
+                {
+                    i = text.IndexOf('\n', i);
+                    if (i < 0)
+                        break;
+                    continue;
+                }
+                if (c == '/' && i + 1 < text.Length && text[i + 1] == '*')
+                {
+                    var end = text.IndexOf("*/", i + 2, StringComparison.Ordinal);
+                    i = end < 0 ? text.Length : end + 2;
+                    continue;
+                }
+                if (c == '"')
+                {
+                    if (text.AsSpan(i).StartsWith("\"\"\""))
+                    {
+                        var end = text.IndexOf("\"\"\"", i + 3, StringComparison.Ordinal);
+                        i = end < 0 ? text.Length : end + 3;
+                    }
+                    else
+                        i = SkipQuote(text, i, '"');
+                    continue;
+                }
+                if (c == '\'')
+                {
+                    i = SkipQuote(text, i, '\'');
+                    continue;
+                }
+                if (char.IsLetter(c) || c is '_' or '$')
+                {
+                    var start = i;
+                    i++;
+                    while (i < text.Length && (char.IsLetterOrDigit(text[i]) || text[i] is '_' or '$'))
+                        i++;
+                    tokens.Add(new Tok(TokKind.Word, text[start..i], start));
+                    continue;
+                }
+                if (char.IsDigit(c))
+                {
+                    while (i < text.Length && (char.IsLetterOrDigit(text[i]) || text[i] is '.' or '_'))
+                        i++;
+                    continue;
+                }
+                tokens.Add(new Tok(TokKind.Symbol, c.ToString(), i));
+                i++;
+            }
+            return tokens;
+        }
+
+        static int SkipQuote(string text, int start, char quote)
+        {
+            for (var i = start + 1; i < text.Length; i++)
+            {
+                if (text[i] == '\\')
+                {
+                    i++;
+                    continue;
+                }
+                if (text[i] == quote)
+                    return i + 1;
+            }
+            return text.Length;
+        }
+
+        enum TokKind { Word, Symbol }
+
+        readonly record struct Tok(TokKind Kind, string Text, int Index);
+    }
 }

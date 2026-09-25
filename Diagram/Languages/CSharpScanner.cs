@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -13,6 +14,7 @@ public sealed class CSharpScanner : ILanguageScanner
     public string Name => "C#";
     public bool SupportsComplexity => true;
     public bool SupportsCrap => true;
+    public bool ShowsStyles => false;
 
     public bool CanScan(string folder) =>
         Directory.Exists(folder)
@@ -128,6 +130,7 @@ public sealed class CSharpScanner : ILanguageScanner
             .Where(path => !IsGeneratedTree(root, path))
             .ToList();
         var types = files.SelectMany(ReadTypes).ToList();
+        AddRazor(root, types);
         var bySimpleName = types.GroupBy(type => type.Name).ToDictionary(group => group.Key, group => group.Select(type => type.Id).ToList());
         foreach (var type in types)
             ReadUses(type, bySimpleName);
@@ -384,8 +387,71 @@ public sealed class CSharpScanner : ILanguageScanner
             child is IdentifierNameSyntax identifier && identifier.Identifier.ValueText == "Avalonia"
             || child is QualifiedNameSyntax qualified && qualified.ToString().StartsWith("Avalonia", StringComparison.Ordinal));
 
+    static void AddRazor(string root, List<TypeFact> types)
+    {
+        IEnumerable<string> razorFiles;
+        try
+        {
+            razorFiles = Directory.EnumerateFiles(root, "*.razor", SearchOption.AllDirectories)
+                .Where(path => !IsGeneratedTree(root, path))
+                .ToList();
+        }
+        catch (IOException)
+        {
+            return;
+        }
+        foreach (var razor in razorFiles)
+        {
+            var stem = Path.GetFileNameWithoutExtension(razor);
+            var dir = Path.GetDirectoryName(razor);
+            var codeBehind = types.FirstOrDefault(type =>
+                type.Name == stem
+                && string.Equals(Path.GetDirectoryName(type.File), dir, StringComparison.OrdinalIgnoreCase)
+                && (Path.GetFileName(type.File).Equals(stem + ".razor.cs", StringComparison.OrdinalIgnoreCase)
+                    || Path.GetFileName(type.File).Equals(stem + ".cs", StringComparison.OrdinalIgnoreCase)));
+            var template = new MethodSpan { Name = "template", Kind = "html", IsPublic = true, StartLine = 1, File = razor };
+            if (codeBehind is not null)
+            {
+                codeBehind.Role = "component";
+                codeBehind.Methods.Add(template);
+                continue;
+            }
+            string text;
+            try
+            {
+                text = File.ReadAllText(razor);
+            }
+            catch (IOException)
+            {
+                continue;
+            }
+            var match = Regex.Match(text, @"@namespace\s+([\w.]+)");
+            var space = match.Success ? match.Groups[1].Value : RazorSpace(root, razor);
+            types.Add(new TypeFact
+            {
+                Id = "type:" + space + "." + stem,
+                Name = stem,
+                NamespaceId = "ns:" + space,
+                File = razor,
+                Line = 1,
+                Role = "component",
+                Methods = [template]
+            });
+        }
+    }
+
+    static string RazorSpace(string root, string razor)
+    {
+        var relative = Path.GetRelativePath(root, Path.GetDirectoryName(razor) ?? root);
+        if (relative is "." or "")
+            return Path.GetFileName(root);
+        return relative.Replace(Path.DirectorySeparatorChar, '.').Replace(Path.AltDirectorySeparatorChar, '.');
+    }
+
     static void ReadUses(TypeFact type, Dictionary<string, List<string>> bySimpleName)
     {
+        if (type.Declaration is null)
+            return;
         if (type.Declaration.BaseList is not null)
         {
             foreach (var baseType in type.Declaration.BaseList.Types)
@@ -560,6 +626,7 @@ public sealed class CSharpScanner : ILanguageScanner
                 File = type.File,
                 Line = type.Line,
                 WorstCc = type.WorstCc == 0 ? null : type.WorstCc,
+                Role = type.Role,
                 Abstract = type.Abstract,
                 CrapMu = type.CrapMu,
                 CrapMax = type.CrapMax,
@@ -574,6 +641,7 @@ public sealed class CSharpScanner : ILanguageScanner
                     Crap = Round1(method.Crap),
                     IsPublic = method.IsPublic,
                     Kind = method.Kind,
+                    File = method.File,
                     Killed = method.Killed,
                     Survived = method.Survived,
                     Uncovered = method.Uncovered
@@ -645,11 +713,12 @@ public sealed class CSharpScanner : ILanguageScanner
         public int Line { get; init; }
         public int WorstCc { get; init; }
         public bool Abstract { get; init; }
+        public string? Role { get; set; }
         public double? CrapMu { get; set; }
         public double? CrapMax { get; set; }
         public double? CrapSigma { get; set; }
         public bool UsesAvalonia { get; init; }
-        public TypeDeclarationSyntax Declaration { get; init; } = null!;
+        public TypeDeclarationSyntax? Declaration { get; init; }
         public List<MethodSpan> Methods { get; init; } = new();
         public HashSet<string> ProjectRefs { get; } = new();
         public List<string> AvaloniaMembers { get; } = new();
@@ -663,6 +732,7 @@ public sealed class CSharpScanner : ILanguageScanner
         public int Cc { get; init; }
         public bool IsPublic { get; init; }
         public string Kind { get; init; } = "method";
+        public string? File { get; init; }
         public double? Coverage { get; set; }
         public double? Crap { get; set; }
         public int? Killed { get; set; }

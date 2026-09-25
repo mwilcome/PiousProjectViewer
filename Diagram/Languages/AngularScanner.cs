@@ -22,6 +22,7 @@ public sealed class AngularScanner : ILanguageScanner
     public string Name => "Angular";
     public bool SupportsComplexity => true;
     public bool SupportsCrap => true;
+    public bool ShowsStyles => true;
 
     public bool CanScan(string folder)
     {

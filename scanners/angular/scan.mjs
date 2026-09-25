@@ -10,21 +10,28 @@ if (!folder) {
 
 const sourceRoot = fs.existsSync(path.join(folder, "src")) ? path.join(folder, "src") : folder;
 const files = walk(sourceRoot);
-const tsFiles = files.filter((file) => file.endsWith(".ts") && !file.endsWith(".spec.ts") && !file.endsWith(".d.ts"));
 const types = [];
 
-for (const file of tsFiles) {
+for (const file of files) {
+  if (!isSource(file)) continue;
+  if (file.endsWith(".vue") || file.endsWith(".svelte")) {
+    readSfc(file);
+    continue;
+  }
   const text = fs.readFileSync(file, "utf8");
-  const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const kind = isJsxFile(file) ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
+  const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, kind);
   const space = namespaceOf(file);
   const classes = [];
   visit(sf, (node) => {
     if (!ts.isClassDeclaration(node) || !node.name) return;
     classes.push(readClass(node, sf, file, text));
   });
+  const functions = readFunctionComponents(sf, file);
   const host = classes.find((item) => item.role) ?? classes[0];
   if (host) attachParts(host, file);
-  for (const item of classes) {
+  for (const item of functions) attachParts(item, file);
+  for (const item of [...classes, ...functions]) {
     item.space = space;
     item.usesAngular = text.includes("@angular/");
     types.push(item);
@@ -33,8 +40,136 @@ for (const file of tsFiles) {
 
 process.stdout.write(JSON.stringify({ types }));
 
+function isSource(file) {
+  if (file.endsWith(".d.ts")) return false;
+  if (/\.(spec|test)\.(ts|tsx|js|jsx)$/.test(file)) return false;
+  return [".ts", ".tsx", ".js", ".jsx", ".vue", ".svelte"].some((ext) => file.endsWith(ext));
+}
+
+function isJsxFile(file) {
+  return file.endsWith(".tsx") || file.endsWith(".jsx");
+}
+
+function readSfc(file) {
+  const text = fs.readFileSync(file, "utf8");
+  const parts = splitSfc(text, file.endsWith(".vue") ? "vue" : "svelte");
+  const script = parts.script.trim() ? parts.script : "export {}";
+  const kind = script.includes("<") ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
+  const sf = ts.createSourceFile(file, script, ts.ScriptTarget.Latest, true, kind);
+  const space = namespaceOf(file);
+  const classes = [];
+  visit(sf, (node) => {
+    if (!ts.isClassDeclaration(node) || !node.name) return;
+    classes.push(readClass(node, sf, file, script));
+  });
+  const functions = readFunctionComponents(sf, file);
+  const stem = path.basename(file, path.extname(file));
+  let host = classes.find((item) => item.role) ?? functions[0] ?? classes[0];
+  if (!host) {
+    host = {
+      name: stem,
+      file,
+      line: 1,
+      role: "component",
+      selector: stem,
+      injected: [],
+      imports: collectImports(sf),
+      members: []
+    };
+  }
+  host.role = host.role || "component";
+  if (!host.selector) host.selector = host.name;
+  pushMember(host, "template", "html", file);
+  if (parts.style.trim()) pushMember(host, "styles", "scss", file);
+  host.space = space;
+  host.usesAngular = script.includes("@angular/");
+  types.push(host);
+  for (const extra of [...classes, ...functions]) {
+    if (extra === host) continue;
+    extra.space = space;
+    extra.usesAngular = host.usesAngular;
+    types.push(extra);
+  }
+}
+
+function splitSfc(text, kind) {
+  const script = text.match(/<script\b[^>]*>([\s\S]*?)<\/script>/i);
+  const style = [...text.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/gi)].map((match) => match[1]).join("\n");
+  const template = kind === "vue"
+    ? text.match(/<template\b[^>]*>([\s\S]*?)<\/template>/i)?.[1] ?? ""
+    : text.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ").replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ");
+  return { script: script?.[1] ?? "", style, template };
+}
+
+function readFunctionComponents(sf, file) {
+  const found = [];
+  const imports = collectImports(sf);
+  sf.forEachChild((statement) => {
+    if (ts.isFunctionDeclaration(statement) && statement.name && isExported(statement) && isComponent(statement.name.text, statement, file))
+      found.push(functionType(statement.name.text, statement, sf, file, imports));
+    if (!ts.isVariableStatement(statement) || !isExported(statement)) return;
+    for (const decl of statement.declarationList.declarations) {
+      if (!ts.isIdentifier(decl.name) || !decl.initializer) continue;
+      const init = decl.initializer;
+      if (!(ts.isArrowFunction(init) || ts.isFunctionExpression(init))) continue;
+      if (!isComponent(decl.name.text, init, file)) continue;
+      found.push(functionType(decl.name.text, init, sf, file, imports, decl));
+    }
+  });
+  return found;
+}
+
+function isComponent(name, node, file) {
+  return /^[A-Z]/.test(name) && (isJsxFile(file) || hasJsx(node));
+}
+
+function functionType(name, node, sf, file, imports, at) {
+  return {
+    name,
+    file,
+    line: lineOf(at ?? node, sf),
+    role: "component",
+    selector: name,
+    injected: [],
+    imports,
+    members: [methodMember(name + "()", node, sf, true)]
+  };
+}
+
+function hasJsx(node) {
+  let found = false;
+  visit(node, (child) => {
+    if (ts.isJsxElement(child) || ts.isJsxSelfClosingElement(child) || ts.isJsxFragment(child)) found = true;
+  });
+  return found;
+}
+
+function isExported(node) {
+  return (ts.canHaveModifiers(node) ? ts.getModifiers(node) : undefined)?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword) ?? false;
+}
+
+function collectImports(sf) {
+  const imports = [];
+  sf.forEachChild((statement) => {
+    if (!ts.isImportDeclaration(statement) || !statement.importClause) return;
+    if (statement.importClause.name) imports.push(statement.importClause.name.text);
+    const named = statement.importClause.namedBindings;
+    if (named && ts.isNamedImports(named)) {
+      for (const element of named.elements) imports.push(element.name.text);
+    }
+  });
+  return imports;
+}
+
+function pushMember(type, name, kind, file) {
+  type.members.push({ name, line: 1, cc: 0, kind, isPublic: true, file });
+}
+
 function readClass(node, sf, file, text) {
-  const role = roleOf(node);
+  let role = roleOf(node);
+  let selector = selectorOf(node);
+  if (!role && isJsxFile(file) && /^[A-Z]/.test(node.name.text)) role = "component";
+  if (role === "component" && !selector) selector = node.name.text;
   const members = [];
   const injected = [];
   for (const member of node.members) {
@@ -55,19 +190,14 @@ function readClass(node, sf, file, text) {
       });
     }
   }
-  const imports = [];
-  sf.forEachChild((statement) => {
-    if (!ts.isImportDeclaration(statement) || !statement.importClause?.namedBindings || !ts.isNamedImports(statement.importClause.namedBindings)) return;
-    for (const element of statement.importClause.namedBindings.elements) imports.push(element.name.text);
-  });
   return {
     name: node.name.text,
     file,
     line: lineOf(node, sf),
     role,
-    selector: selectorOf(node),
+    selector,
     injected,
-    imports,
+    imports: collectImports(sf),
     members
   };
 }
@@ -134,8 +264,15 @@ function complexity(node) {
 }
 
 function attachParts(type, tsFile) {
+  if (tsFile.endsWith(".vue") || tsFile.endsWith(".svelte")) return;
+  if (isJsxFile(tsFile)) {
+    pushMember(type, "template", "html", tsFile);
+    const style = sibling(path.dirname(tsFile), path.basename(tsFile).replace(/\.(tsx|jsx)$/, ""), [".module.scss", ".module.css", ".scss", ".css"]);
+    if (style) pushMember(type, "styles", "scss", style);
+    return;
+  }
   const dir = path.dirname(tsFile);
-  const base = path.basename(tsFile, ".ts");
+  const base = path.basename(tsFile, path.extname(tsFile));
   const template = decoratorFile(tsFile, "templateUrl") ?? sibling(dir, base, [".html", ".component.html"]);
   const style = decoratorFile(tsFile, "styleUrl") ?? sibling(dir, base, [".scss", ".css", ".component.scss", ".component.css"]);
   if (template) type.members.push({ name: "template", line: 1, cc: 0, kind: "html", isPublic: true, file: template });
@@ -191,7 +328,7 @@ function visit(node, fn) {
 function walk(dir, acc = []) {
   if (!fs.existsSync(dir)) return acc;
   for (const name of fs.readdirSync(dir)) {
-    if (["node_modules", "dist", ".angular", "coverage"].includes(name)) continue;
+    if (["node_modules", "dist", ".angular", "coverage", ".next", ".svelte-kit", "bin", "obj"].includes(name)) continue;
     const full = path.join(dir, name);
     let stat;
     try { stat = fs.statSync(full); } catch { continue; }

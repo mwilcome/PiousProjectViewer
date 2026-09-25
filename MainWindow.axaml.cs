@@ -73,10 +73,27 @@ public partial class MainWindow : Window
             CrapMode.IsChecked = true;
         else if (Diagram.Mode == PaintMode.Distance)
             DistanceMode.IsChecked = true;
-        _session.Folder = null;
-        ShowEmpty();
+        RememberProject.IsChecked = _session.RememberProject;
+        var remembered = _session.RememberedFolder ?? _session.Folder;
+        if (_session.RememberProject && !string.IsNullOrWhiteSpace(remembered) && Directory.Exists(remembered))
+            OpenFolder(remembered);
+        else
+        {
+            if (string.IsNullOrWhiteSpace(_session.RememberedFolder))
+                _session.RememberedFolder = _session.Folder;
+            _session.Folder = null;
+            ShowEmpty();
+        }
         _pulse.Due += (_, _) => Dispatcher.UIThread.Post(OnPiousFile);
         _ready = true;
+    }
+
+    void OnRememberProject(object? sender, RoutedEventArgs e)
+    {
+        if (!_ready)
+            return;
+        _session.RememberProject = RememberProject.IsChecked == true;
+        SessionStore.Save(_session);
     }
 
     protected override void OnClosed(EventArgs e)
@@ -177,6 +194,7 @@ public partial class MainWindow : Window
         if (stoppedCompanion)
             Companion.Kill();
         _session.Folder = folder;
+        _session.RememberedFolder = folder;
         _styles = null;
         _stylesFolder = null;
         _stylesTab = false;
@@ -278,9 +296,9 @@ public partial class MainWindow : Window
             : _language == "auto"
                 ? detected is null ? "This folder is not recognized." : "Detected " + detected.Name + "."
                 : "Using " + _language + ".";
-        var angular = detected?.Name == "Angular";
-        StylesTab.IsVisible = angular;
-        if (!angular && _stylesTab)
+        var styles = detected?.ShowsStyles == true;
+        StylesTab.IsVisible = styles;
+        if (!styles && _stylesTab)
             _stylesTab = false;
         Diagram.IsVisible = !_stylesTab;
         StylePictureView.IsVisible = _stylesTab;
