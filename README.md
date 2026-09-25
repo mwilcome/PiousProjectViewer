@@ -25,9 +25,33 @@ On that first turn the companion trusts what `.pious` already contains. If the t
 
 A box is a package or a class. An oval is a library. The left side lists the classes or methods. Double-click a class for the detail card. Click a method, or double-click a method line, to open the file in the default app. Right-click a box to refresh. That runs the tests and scans the whole project. The mail only names the box.
 
-Color by is Complexity, CRAP, or Distance. **Generate proposal** asks the companion to move one type into another folder and write `.pious/proposal.json`. **Switch to proposal** shows that file locally. It does not scan again.
+Color by is Complexity, CRAP, or Distance. **Propose fix** on the class picture asks the companion to move one type into another folder and write `.pious/proposal.json`. The diagram file must already exist. **Switch to proposal** shows that file locally. It does not scan again.
 
-An Angular, React, Vue, or Svelte folder also has a Styles tab. The picture is the templates and the stylesheets that hit them. JSX uses `className`. Vue and Svelte styles are read from the component file. **Refresh styles** rescans in the app. It does not run tests and does not need the companion. If `.pious` already exists, it writes `.pious/styles-diagram.json`. Click an HTML box to see which styles hit it and which file each one comes from. Click a style to open that file. **Generate proposal** on this tab asks for one style-rule change in `.pious/styles-proposal.json`.
+An Angular, React, Vue, or Svelte folder also has a Styles tab. The picture is the seven style homes and the two jobs: fold a class into a shared file, or give a copied name one home. **Refresh styles** rescans in the app. It does not run tests and does not need the companion. If `.pious` already exists, opening Styles or refreshing writes `.pious/styles-diagram.json`. Click a stylesheet or an HTML file to open it. **Propose fix** writes that diagram again, then asks for one style fix in `.pious/styles-proposal.json`. The scan stays until you apply the fix later.
+
+## Use cases
+
+Each case says what you do, what must already be on disk, and what the companion is allowed to do.
+
+**Open a folder.** The app does not write `.pious`, does not scan, and does not start the companion. A diagram already in `.pious/diagram.json` is shown. Anything else stays on the empty screen.
+
+**Generate project and start agent.** The folder is recognized and `.pious` is missing. The app writes `.pious/project.json` with the scan command and starts the companion. The test line is left empty. The companion's first message says exactly what is already in `.pious`. If the test line and `diagram.json` are both there, it stops. If the test line is missing, it reads one root test script or build file and stores that command. If `diagram.json` is missing and a scan command is present, it runs that scan once. It does not run tests on that first turn.
+
+**Refresh diagram.** The companion is running and `.pious/project.json` has a scan command. The mail names the test command, when one is stored, and the scan command. The companion runs the test command, then the scan. The scan writes `.pious/diagram.json`. The window reloads that file. If there is no test command, it says so and scans only.
+
+**Refresh this box.** Same as refresh diagram. The mail names the box. The tests and the scan still cover the whole project.
+
+**Propose a class move.** `.pious/diagram.json` is already on disk. If it is not, the app does not send mail and says to refresh the diagram first. The companion reads that file and writes `.pious/proposal.json`. It changes which folder one type sits in. It does not edit `diagram.json` or the source. The picture stays on the scan until you switch.
+
+**Switch to the class proposal.** `.pious/proposal.json` exists. The switch is local. It does not start the companion and does not scan.
+
+**Open Styles.** The folder is a frontend the app recognizes. The scan runs in the app. If `.pious` already exists, the app writes `.pious/styles-diagram.json` before you ask for a fix. The companion is not required.
+
+**Propose a style fix.** The companion is running, a class is selected, and `.pious` exists. The app writes `.pious/styles-diagram.json` from the scan on screen, then sends mail that names `.pious/styles-proposal.json` and that class. The companion reads the diagram file and writes only the proposal file. If the diagram file is missing, it says the path and stops. It does not edit stylesheets or `styles-diagram.json`. The picture stays on the scan until you switch.
+
+**Switch to the style proposal.** `.pious/styles-proposal.json` exists and can be read. The switch is local. **How it is** returns to the scan.
+
+**Go add tests.** You say this to the companion. It is not a button. It writes tests in the normal place, stores the test command if it was missing, runs that command once, then runs the scan. Sample tests are not treated as a missing suite.
 
 ## CRAP Formulas/Complexity Calculations
 
@@ -79,7 +103,7 @@ You need the .NET 10 SDK. The window is the program `PiousProjectViewer`.
 
 **What you should expect.** `.pious/` is generated. It is gitignored here. A new project does not need a diagram, a coverage file, or a mutation report waiting on disk. A missing coverage report is treated as 0% covered. It is not a failure. Mutation numbers show up only when a `mutation-report.json` is already there. C# can run Stryker. Angular and Java have no mutate command.
 
-**What the companion does when you start it.** It reads `.pious/project.json`. If the test line and the diagram are both present, it stops. If the test line is missing, it reads only the one root test script or build file. If the diagram is missing, it runs the scan once. It does not run tests, and it does not add a coverage flag, until you ask. Say **go add tests** and it writes them, runs the test command from that file, then the scan. The one flag it may add is that runner's coverage flag, and only when the command and the root runner config do not already write `coverage.cobertura.xml`, `lcov.info`, or `jacoco.xml`. If the command fails because that coverage package is missing, it installs the normal package for the same runner and runs the command once more. If it still fails, it quotes the error and still scans once. It does not edit `diagram.json` or invent boxes. **Refresh diagram** asks it to run the tests and then the scan again. **Generate proposal** asks it to write `.pious/proposal.json`, or `.pious/styles-proposal.json` when the Styles tab is showing. That button stays off until the companion is running. **Refresh styles** does not ask the companion.
+**What the companion does when you start it.** It reads `.pious/project.json`. If the test line and the diagram are both present, it stops. If the test line is missing, it reads only the one root test script or build file. If the diagram is missing, it runs the scan once. It does not run tests, and it does not add a coverage flag, until you ask. Say **go add tests** and it writes them, runs the test command from that file, then the scan. The one flag it may add is that runner's coverage flag, and only when the command and the root runner config do not already write `coverage.cobertura.xml`, `lcov.info`, or `jacoco.xml`. If the command fails because that coverage package is missing, it installs the normal package for the same runner and runs the command once more. If it still fails, it quotes the error and still scans once. It does not edit `diagram.json` or invent boxes. **Refresh diagram** asks it to run the tests and then the scan again. **Propose fix** on the class picture asks it to read `.pious/diagram.json` and write `.pious/proposal.json`. The app does not send that mail when the diagram file is missing. On Styles, the app writes `.pious/styles-diagram.json` first, then asks for `.pious/styles-proposal.json`. If a file the mail names is missing, the companion says the path and stops. The button stays off until a class is selected and the companion is running. **Refresh styles** does not ask the companion.
 
 ## Future Plans
 

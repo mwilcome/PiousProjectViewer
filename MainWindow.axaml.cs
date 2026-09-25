@@ -27,6 +27,7 @@ public partial class MainWindow : Window
     bool _showingStyleProposal;
     bool _styleProposalAnnounced;
     bool _showCalmStyles;
+
     bool _proposalAnnounced;
     ClassCardWindow? _cardWindow;
     bool _ready;
@@ -53,7 +54,7 @@ public partial class MainWindow : Window
         InitializeComponent();
         Shell.SizeChanged += (_, _) => KeepMiddleGap();
         Diagram.ViewChanged += (_, _) => RefreshInspector();
-        StylePictureView.ViewChanged += (_, _) => { if (_stylesTab) ShowStyleOutline(); };
+        StylePictureView.ViewChanged += (_, _) => { if (_stylesTab) RefreshInspector(); };
         Diagram.OpenCard += (_, node) => ShowCard(node);
         Diagram.RefreshNode += (_, node) => RefreshOne(node);
         LanguageBox.ItemsSource = new[] { "Auto" }.Concat(Scanners.All.Select(scanner => scanner.Name)).ToList();
@@ -316,7 +317,7 @@ public partial class MainWindow : Window
         StyleLegend.IsVisible = _stylesTab;
         SetPrimary(ClassesTab, !_stylesTab);
         SetPrimary(StylesTab, _stylesTab);
-        RefreshHint.Text = _stylesTab ? "Rescans the stylesheets. Tests are not run." : "Runs the tests, then redraws.";
+        RefreshHint.IsVisible = false;
         RefreshButton.Content = _stylesTab ? "Refresh styles" : "Refresh diagram";
         if (_stylesTab)
             FillStyleLegend();
@@ -333,31 +334,36 @@ public partial class MainWindow : Window
         }
         var proposal = folderOpen && File.Exists(DiagramPublisher.ProposalPath(_session.Folder!));
         var styleProposal = folderOpen && File.Exists(StyleProposalPath(_session.Folder!));
-        ViewText.Text = _stylesTab
-            ? !styleProposal
-                ? "Asks for one style fix. The scan stays."
-                : _showingStyleProposal ? "Showing the proposal." : "How it is. The proposal is ready."
-            : !proposal
-            ? "Writes a second picture. The scan stays."
-            : _showingProposal ? "Showing the proposal." : "Showing the scanned diagram.";
         var live = _companionRunning && Companion.IsLive;
+        var target = _stylesTab
+            ? _styles is null ? null : StyleProblems.Build(_styles).FirstOrDefault(item => item.Id == StylePictureView.Problem)?.Title
+            : Diagram.SelectedNode?.Name;
+        var armed = folderOpen && live && !string.IsNullOrWhiteSpace(target);
+        ProposalButton.Content = armed ? "Propose fix for " + target : "Generate proposal";
+        ProposalButton.IsEnabled = armed;
+        ViewText.Text = string.IsNullOrWhiteSpace(target) ? "Select a class." : "";
+        ViewText.IsVisible = string.IsNullOrWhiteSpace(target);
+        ToolTip.SetTip(ProposalButton, !folderOpen
+            ? "Open a project first."
+            : string.IsNullOrWhiteSpace(target)
+                ? "Select a class."
+                : !live
+                    ? "Start the companion first."
+                    : "Asks the companion for one fix. The scan stays.");
         SetPrimary(OpenButton, !folderOpen);
         RefreshButton.IsEnabled = _stylesTab ? folderOpen : live && folderOpen;
-        ProposalButton.IsEnabled = live && folderOpen;
+        SetPrimary(RefreshButton, RefreshButton.IsEnabled && !armed);
+        SetPrimary(ProposalButton, armed);
+        SetPrimary(StartCompanionButton, false);
         ToolTip.SetTip(RefreshButton, _stylesTab
             ? "Rescans the stylesheets. The companion is not required."
             : live ? "Runs the tests, then redraws the diagram." : "Start the companion first.");
-        ToolTip.SetTip(ProposalButton, !live
-            ? "Start the companion first."
-            : _stylesTab
-                ? "Asks for one style fix. The scan stays."
-                : "Asks the companion to move one type. The picture stays.");
         var showing = _stylesTab ? _showingStyleProposal : _showingProposal;
         SwitchProposalButton.IsVisible = _stylesTab ? styleProposal : proposal;
         SwitchProposalButton.Content = _stylesTab
             ? showing ? "How it is" : "Proposal"
             : showing ? "Switch to scanned diagram" : "Switch to proposal";
-        SetPrimary(SwitchProposalButton, (_stylesTab ? styleProposal : proposal) && !showing);
+        SetPrimary(SwitchProposalButton, false);
         ToolTip.SetTip(SwitchProposalButton, showing ? "Shows how it is now." : "Shows the proposal.");
         StartCompanionButton.Content = live ? "Restart companion" : "Start companion";
         var recognized = !string.IsNullOrWhiteSpace(_session.Folder) && Scanners.Resolve(_session.Folder, _language) is not null;
@@ -427,6 +433,12 @@ public partial class MainWindow : Window
         }
     };
 
+    void OnToggleProject(object? sender, RoutedEventArgs e)
+    {
+        ProjectBody.IsVisible = !ProjectBody.IsVisible;
+        ProjectToggle.Content = ProjectBody.IsVisible ? "Project  ▾" : "Project  ▸";
+    }
+
     static void SetPrimary(Button button, bool on)
     {
         if (on)
@@ -450,9 +462,12 @@ public partial class MainWindow : Window
             return;
         _stylesTab = true;
         if (_styles is null || _stylesFolder != _session.Folder)
-            LoadStyles(write: false);
+            LoadStyles(write: true);
         else
+        {
+            StyleFiles.Write(_session.Folder, _styles);
             StylePictureView.Show(_styles);
+        }
         RefreshInspector();
     }
 
@@ -855,7 +870,12 @@ public partial class MainWindow : Window
         {
             var button = StyleHitButton(template.Name, "HTML", "#E6C27A");
             var id = template.Id;
-            button.Click += (_, _) => StylePictureView.SelectBox(id);
+            var file = template.File;
+            button.Click += (_, _) =>
+            {
+                StylePictureView.SelectBox(id);
+                CompanionStatus.Text = SourceEditor.Open(file, 1);
+            };
             MemberRows.Children.Add(button);
         }
     }
@@ -1088,13 +1108,27 @@ public partial class MainWindow : Window
         }
         if (_stylesTab)
         {
-            var chosen = _styles is null
-                ? null
-                : StyleProblems.Build(_styles).FirstOrDefault(item => item.Id == StylePictureView.Problem)?.Title;
+            if (_styles is null || _stylesFolder != _session.Folder)
+                LoadStyles(write: true);
+            else
+                StyleFiles.Write(_session.Folder, _styles);
+            if (!File.Exists(StyleFiles.DiagramPath(_session.Folder)))
+            {
+                CompanionStatus.Text = "The styles scan was not saved. Generate the project first so .pious exists.";
+                return;
+            }
+            var chosen = StyleProblems.Build(_styles!).FirstOrDefault(item => item.Id == StylePictureView.Problem)?.Title;
             DiagramPublisher.PostStyleProposal(_session.Folder, chosen);
         }
         else
+        {
+            if (!File.Exists(DiagramPublisher.DiagramPath(_session.Folder)))
+            {
+                CompanionStatus.Text = "There is no diagram yet. Refresh the diagram first.";
+                return;
+            }
             DiagramPublisher.PostProposal(_session.Folder);
+        }
         _ = Companion.SendInputAsync(GrokLaunch.WakeLine);
         _proposalAnnounced = false;
         CompanionStatus.Text = "Asked the companion for a proposal.";

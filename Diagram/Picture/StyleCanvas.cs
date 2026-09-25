@@ -400,9 +400,23 @@ public sealed class StyleCanvas : Control
         {
             _selected = null;
             _selectedBox = hit.Id;
+            OpenHit(hit.Id);
         }
         InvalidateVisual();
         ViewChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    void OpenHit(string id)
+    {
+        var sheet = _picture?.Sheets.FirstOrDefault(item => item.Id == id);
+        if (sheet is not null)
+        {
+            SourceEditor.Open(sheet.File, 1);
+            return;
+        }
+        var template = _picture?.Templates.FirstOrDefault(item => item.Id == id);
+        if (template is not null)
+            SourceEditor.Open(template.File, 1);
     }
 
     static bool IsProblem(string id) => id.StartsWith("problem:", StringComparison.Ordinal);

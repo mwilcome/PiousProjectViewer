@@ -6,8 +6,8 @@
     <Application.Styles>
         <fluent:FluentTheme>
             <fluent:FluentTheme.Palettes>
-                <fluent:ColorPaletteResources x:Key="Dark" Accent="#1F8A5B" />
-                <fluent:ColorPaletteResources x:Key="Light" Accent="#1F8A5B" />
+                <fluent:ColorPaletteResources x:Key="Dark" Accent="#1d5b7a" />
+                <fluent:ColorPaletteResources x:Key="Light" Accent="#1d5b7a" />
             </fluent:FluentTheme.Palettes>
         </fluent:FluentTheme>
         <Style Selector="ScrollBar">
