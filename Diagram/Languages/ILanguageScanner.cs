@@ -65,14 +65,14 @@ public static class Scanners
             {
                 children = Directory.EnumerateFileSystemEntries(dir);
             }
-            catch (IOException)
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
                 continue;
             }
             foreach (var child in children)
             {
                 var name = Path.GetFileName(child);
-                if (Directory.Exists(child))
+                if (FileWalk.IsDirectory(child))
                 {
                     if (name is not ("node_modules" or "dist" or "bin" or "obj" or "target" or ".git" or "coverage"))
                         pending.Push(child);

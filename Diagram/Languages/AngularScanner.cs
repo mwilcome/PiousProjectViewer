@@ -342,7 +342,7 @@ public sealed class AngularScanner : ILanguageScanner
             {
                 html = File.ReadAllText(template.File);
             }
-            catch (IOException)
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
                 continue;
             }
@@ -387,19 +387,19 @@ public sealed class AngularScanner : ILanguageScanner
         while (pending.Count > 0)
         {
             var dir = pending.Pop();
-            IEnumerable<string> children;
+            List<string> children;
             try
             {
-                children = Directory.EnumerateFileSystemEntries(dir);
+                children = Directory.EnumerateFileSystemEntries(dir).ToList();
             }
-            catch (IOException)
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
                 continue;
             }
             foreach (var child in children)
             {
                 var name = Path.GetFileName(child);
-                if (Directory.Exists(child))
+                if (FileWalk.IsDirectory(child))
                 {
                     if (name is not ("node_modules" or "dist" or ".angular" or "coverage"))
                         pending.Push(child);

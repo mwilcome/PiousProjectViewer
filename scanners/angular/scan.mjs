@@ -327,7 +327,9 @@ function visit(node, fn) {
 
 function walk(dir, acc = []) {
   if (!fs.existsSync(dir)) return acc;
-  for (const name of fs.readdirSync(dir)) {
+  let names;
+  try { names = fs.readdirSync(dir); } catch { return acc; }
+  for (const name of names) {
     if (["node_modules", "dist", ".angular", "coverage", ".next", ".svelte-kit", "bin", "obj"].includes(name)) continue;
     const full = path.join(dir, name);
     let stat;

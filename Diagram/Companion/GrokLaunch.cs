@@ -34,6 +34,7 @@ public static class GrokLaunch
         "If you find no test command, leave test out. Do not offer a list of runners and do not try a second one. " +
         "Ask which runner to use only when the user says go add tests and the project files still name none. Ask once, then write that one command. " +
         "The scan command in project.json is the viewer's scan. Do not replace it. Do not run tests until the user asks. " +
+        "If project.json says tests are none, this project has no tests. Do not read a script, do not write a test line, and do not run tests. If the user says go add tests, write them anyway. " +
         "When the user says go add tests, or add tests: write tests in the normal place for this project. " +
         "C# tests go in the test project. Angular tests are .spec.ts files beside the source. Java tests go under src/test/java. " +
         "Sample, example, and template tests are not a missing suite. " +
@@ -51,7 +52,7 @@ public static class GrokLaunch
         "Do not edit .pious/diagram.json by hand and do not invent boxes. " +
         "When a line says you have mail, read .pious/to-agent.json, handle the oldest command, and remove it from the queue. " +
         "If that command tells you to read a file and the file is not there, say the path in one line and stop. Do not search the project for a substitute. " +
-        "refresh means: the test line in the mail, or else project.json, is the stored command. If it does not already write one of the three coverage reports, add that runner's coverage flag, save the command and coverageFile in project.json, then run the saved command. Then the scan. If there is no test command, say so and scan only. The first spot check does not add the flag and does not run tests. " +
+        "refresh means: the test line in the mail, or else project.json, is the stored command. If it does not already write one of the three coverage reports, add that runner's coverage flag, save the command and coverageFile in project.json, then run the saved command. Then the scan. If project.json says tests are none, or there is no test command, say so and scan only. The first spot check does not add the flag and does not run tests. " +
         "refresh-node is the same, and the mail names the one box. It still tests and scans the whole project. " +
         "proposal means read .pious/diagram.json and write .pious/proposal.json next to it. The mail names that path. Same names and same ids. The only change is which folder a type sits in. Do not edit diagram.json and do not invent types. Start with a folder other code depends on, and with a type that touches many others. Move that type into a folder that depends outward, when the move is real. If method scores are present, prefer a type whose methods score high. Then one line: which type moved, and which score made it the one. If nothing is heavy, say so and leave the grouping as it is. " +
         "If the mail path is .pious/styles-proposal.json, read .pious/styles-diagram.json instead. A shared file is the global stylesheet, a partial whose name starts with _, or a file under styles/ or shared/. A component stylesheet is not shared. If the mail names a class, fix that class. If it does not, pick the worst one. kind fold means a shared file already has the name. kind promote means the name is copied and no shared file owns it. Write .pious/styles-proposal.json with summary, name, kind (fold or promote), from (files to stop using), to (the home file), and drop (names to remove). One fix only. Do not edit styles-diagram.json and do not edit the stylesheets. " +
@@ -68,13 +69,16 @@ public static class GrokLaunch
 
     public static string Opening(string folder)
     {
-        var hasTest = DiagramPublisher.SavedTest(folder).Length > 0;
+        var noTests = DiagramPublisher.TestsAreNone(folder);
+        var hasTest = !noTests && DiagramPublisher.SavedTest(folder).Length > 0;
         var hasDiagram = File.Exists(DiagramPublisher.DiagramPath(folder));
         var hasScan = HasCommand(folder, "scan");
         var facts = "You are already in the project folder. Do not look around to find it. ";
         if (!File.Exists(DiagramPublisher.RecipePath(folder)))
             return facts + ".pious/project.json is missing. Say that in one line and stop.";
-        var test = hasTest
+        var test = noTests
+            ? "This project has no tests. Do not read a test script. Do not write a test line. Do not run tests. "
+            : hasTest
             ? ".pious/project.json already has a test line. Do not read scripts or the README to check it. "
             : ".pious/project.json has no test line. Read only the one test script or build file at the project root. If it names a command, write that command. If it does not, say it is ambiguous and stop. Do not search further. ";
         var diagram = hasDiagram

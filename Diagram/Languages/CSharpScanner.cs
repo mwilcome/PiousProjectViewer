@@ -107,7 +107,7 @@ public sealed class CSharpScanner : ILanguageScanner
     {
         if (!Directory.Exists(folder))
             return [];
-        return Directory.EnumerateFiles(folder, "*.csproj", SearchOption.AllDirectories)
+        return FileWalk.Ending(folder, ".csproj")
             .Where(path => IsTestProject(Path.GetFileName(path)) && !IsBuildOutput(folder, path))
             .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
             .ToList();
@@ -117,7 +117,7 @@ public sealed class CSharpScanner : ILanguageScanner
     {
         if (!Directory.Exists(folder))
             return [];
-        return Directory.EnumerateFiles(folder, "*.csproj", SearchOption.AllDirectories)
+        return FileWalk.Ending(folder, ".csproj")
             .Where(path => !IsTestProject(Path.GetFileName(path)) && !IsGeneratedTree(folder, path))
             .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
             .ToList();
@@ -126,7 +126,7 @@ public sealed class CSharpScanner : ILanguageScanner
     static DiagramDocument ScanProject(string projectFile)
     {
         var root = Path.GetDirectoryName(projectFile) ?? ".";
-        var files = Directory.EnumerateFiles(root, "*.cs", SearchOption.AllDirectories)
+        var files = FileWalk.Ending(root, ".cs")
             .Where(path => !IsGeneratedTree(root, path))
             .ToList();
         var types = files.SelectMany(ReadTypes).ToList();
@@ -389,17 +389,9 @@ public sealed class CSharpScanner : ILanguageScanner
 
     static void AddRazor(string root, List<TypeFact> types)
     {
-        IEnumerable<string> razorFiles;
-        try
-        {
-            razorFiles = Directory.EnumerateFiles(root, "*.razor", SearchOption.AllDirectories)
-                .Where(path => !IsGeneratedTree(root, path))
-                .ToList();
-        }
-        catch (IOException)
-        {
-            return;
-        }
+        var razorFiles = FileWalk.Ending(root, ".razor")
+            .Where(path => !IsGeneratedTree(root, path))
+            .ToList();
         foreach (var razor in razorFiles)
         {
             var stem = Path.GetFileNameWithoutExtension(razor);
@@ -421,7 +413,7 @@ public sealed class CSharpScanner : ILanguageScanner
             {
                 text = File.ReadAllText(razor);
             }
-            catch (IOException)
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
                 continue;
             }

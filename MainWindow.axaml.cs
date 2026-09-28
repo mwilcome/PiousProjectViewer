@@ -31,6 +31,7 @@ public partial class MainWindow : Window
     bool _proposalAnnounced;
     ClassCardWindow? _cardWindow;
     bool _ready;
+    bool _loadingNoTests;
     bool _sashDrag;
     bool _sashLeft;
     bool _sashFromSnap;
@@ -98,6 +99,19 @@ public partial class MainWindow : Window
             return;
         _session.RememberProject = RememberProject.IsChecked == true;
         SessionStore.Save(_session);
+    }
+
+    void OnNoTests(object? sender, RoutedEventArgs e)
+    {
+        if (!_ready || _loadingNoTests || string.IsNullOrWhiteSpace(_session.Folder))
+            return;
+        if (!File.Exists(DiagramPublisher.RecipePath(_session.Folder)))
+            return;
+        DiagramPublisher.MarkTests(_session.Folder, NoTests.IsChecked == true);
+        if (_companionRunning)
+            CompanionStatus.Text = NoTests.IsChecked == true
+                ? "Restart the companion so it leaves tests alone."
+                : "Restart the companion so it can look for a test command.";
     }
 
     protected override void OnClosed(EventArgs e)
@@ -206,6 +220,9 @@ public partial class MainWindow : Window
             Companion.Kill();
         _session.Folder = folder;
         _session.RememberedFolder = folder;
+        _loadingNoTests = true;
+        NoTests.IsChecked = DiagramPublisher.TestsAreNone(folder);
+        _loadingNoTests = false;
         _styles = null;
         _stylesFolder = null;
         _stylesTab = false;
@@ -278,6 +295,9 @@ public partial class MainWindow : Window
     {
         _showingProposal = false;
         _proposalAnnounced = false;
+        _loadingNoTests = true;
+        NoTests.IsChecked = false;
+        _loadingNoTests = false;
         _pulse.Stop();
         Diagram.Document = new DiagramDocument
         {
@@ -1292,7 +1312,24 @@ public partial class MainWindow : Window
             return;
         if (Scanners.Resolve(_session.Folder, _language) is null)
             return;
+        if (NoTests.IsChecked != true)
+        {
+            var scanOnly = await AskTests();
+            if (scanOnly is null)
+            {
+                CompanionStatus.Text = "Choose whether this project has tests.";
+                return;
+            }
+            if (scanOnly == true)
+            {
+                _loadingNoTests = true;
+                NoTests.IsChecked = true;
+                _loadingNoTests = false;
+            }
+        }
         WriteProjectRecipe(_session.Folder);
+        if (NoTests.IsChecked == true)
+            DiagramPublisher.MarkTests(_session.Folder, true);
         _pulse.WatchFile(DiagramPublisher.DiagramPath(_session.Folder));
         RefreshInspector();
         await StartCompanionAsync();
@@ -1319,6 +1356,8 @@ public partial class MainWindow : Window
             CompanionStatus.Text = "Open a project folder before starting the companion.";
             return;
         }
+        if (!await EnsureTestChoice())
+            return;
         var grok = GrokLaunch.Find();
         var grokMissing = grok == "grok" ? !ExistsOnPath("grok") : !File.Exists(grok);
         if (grokMissing)
@@ -1342,6 +1381,79 @@ public partial class MainWindow : Window
         _companionRunning = StartProcess is not null || Companion.IsLive;
         CompanionStatus.Text = _companionRunning ? "Running in this folder." : "The companion did not start.";
         RefreshInspector();
+    }
+
+    async Task<bool> EnsureTestChoice()
+    {
+        var folder = _session.Folder!;
+        if (!File.Exists(DiagramPublisher.RecipePath(folder)))
+            return true;
+        if (DiagramPublisher.TestsAreNone(folder) || DiagramPublisher.SavedTest(folder).Length > 0)
+            return true;
+        if (NoTests.IsChecked == true)
+        {
+            DiagramPublisher.MarkTests(folder, true);
+            return true;
+        }
+        var scanOnly = await AskTests();
+        if (scanOnly is null)
+        {
+            CompanionStatus.Text = "Choose whether this project has tests.";
+            return false;
+        }
+        if (scanOnly == true)
+        {
+            _loadingNoTests = true;
+            NoTests.IsChecked = true;
+            _loadingNoTests = false;
+            DiagramPublisher.MarkTests(folder, true);
+        }
+        return true;
+    }
+
+    async Task<bool?> AskTests()
+    {
+        var dialog = new Window
+        {
+            Title = "Tests",
+            Width = 440,
+            SizeToContent = SizeToContent.Height,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            CanResize = false,
+            Background = new SolidColorBrush(Color.Parse("#12141A")),
+            Foreground = new SolidColorBrush(Color.Parse("#F4F6F8"))
+        };
+        bool? scanOnly = null;
+        var look = new Button { Content = "Look once", MinHeight = 32, HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Center };
+        var scan = new Button { Content = "Scan only", MinHeight = 32, HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Center };
+        look.Click += (_, _) =>
+        {
+            scanOnly = false;
+            dialog.Close();
+        };
+        scan.Click += (_, _) =>
+        {
+            scanOnly = true;
+            dialog.Close();
+        };
+        dialog.Content = new StackPanel
+        {
+            Margin = new Avalonia.Thickness(20),
+            Spacing = 12,
+            Children =
+            {
+                new TextBlock
+                {
+                    Text = "No test command is stored. Look once at the root test script, or leave tests alone and only scan.",
+                    TextWrapping = TextWrapping.Wrap,
+                    FontSize = 14
+                },
+                look,
+                scan
+            }
+        };
+        await dialog.ShowDialog(this);
+        return scanOnly;
     }
 
     internal static bool ExistsOnPath(string name)

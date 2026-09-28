@@ -19,7 +19,7 @@ public sealed class CoverageReport
         if (named is not null)
             return named;
         var file = new[] { "coverage.cobertura.xml", "lcov.info", "jacoco.xml" }
-            .SelectMany(name => Directory.EnumerateFiles(folder, name, SearchOption.AllDirectories))
+            .SelectMany(name => FileWalk.Named(folder, name))
             .Select(path => new FileInfo(path))
             .OrderByDescending(info => info.LastWriteTimeUtc)
             .FirstOrDefault();
@@ -85,7 +85,7 @@ public sealed class CoverageReport
             var count = reader.Read(buffer, 0, buffer.Length);
             head = new string(buffer, 0, count);
         }
-        catch (IOException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             return null;
         }

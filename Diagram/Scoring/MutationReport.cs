@@ -14,7 +14,7 @@ public sealed class MutationReport
     {
         if (!Directory.Exists(folder))
             return null;
-        var file = Directory.EnumerateFiles(folder, "mutation-report.json", SearchOption.AllDirectories)
+        var file = FileWalk.Named(folder, "mutation-report.json")
             .Select(path => new FileInfo(path))
             .OrderByDescending(info => info.LastWriteTimeUtc)
             .FirstOrDefault();

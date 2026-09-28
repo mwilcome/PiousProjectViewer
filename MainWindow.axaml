@@ -318,6 +318,7 @@
                             <TextBlock x:Name="ProjectPath" Classes="hint" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
                             <Button x:Name="OpenButton" Classes="side" Content="Open project" Click="OnOpen" />
                             <CheckBox x:Name="RememberProject" Content="Remember project on restart" IsCheckedChanged="OnRememberProject" />
+                            <CheckBox x:Name="NoTests" Content="No tests, scan only" IsCheckedChanged="OnNoTests" />
                             <TextBlock Classes="section" Text="LANGUAGE" />
                             <ComboBox x:Name="LanguageBox" HorizontalAlignment="Stretch" SelectionChanged="OnLanguage" />
                             <TextBlock x:Name="LanguageNote" Classes="hint" />

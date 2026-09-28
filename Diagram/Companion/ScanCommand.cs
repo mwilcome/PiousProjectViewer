@@ -23,7 +23,15 @@ public static class ScanCommand
             Environment.ExitCode = 1;
             return true;
         }
-        DiagramPublisher.Publish(folder, scanner.Scan(folder));
+        try
+        {
+            DiagramPublisher.Publish(folder, scanner.Scan(folder));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Console.Error.WriteLine("Scan could not read part of this folder. " + ex.Message);
+            Environment.ExitCode = 1;
+        }
         return true;
     }
 

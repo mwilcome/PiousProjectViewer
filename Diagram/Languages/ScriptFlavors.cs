@@ -74,7 +74,7 @@ public static class ScriptPackages
         {
             return File.ReadAllText(path).Contains("\"" + package + "\"", StringComparison.Ordinal);
         }
-        catch (IOException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             return false;
         }

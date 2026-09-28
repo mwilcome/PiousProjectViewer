@@ -271,7 +271,7 @@ public static class StyleScanner
             {
                 text = File.ReadAllText(markup);
             }
-            catch (IOException)
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
                 continue;
             }
@@ -336,7 +336,7 @@ public static class StyleScanner
                 {
                     body = File.ReadAllText(path);
                 }
-                catch (IOException)
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                 {
                     return;
                 }
@@ -487,19 +487,19 @@ public static class StyleScanner
         while (pending.Count > 0)
         {
             var current = pending.Pop();
-            IEnumerable<string> children;
+            List<string> children;
             try
             {
-                children = Directory.EnumerateFileSystemEntries(current);
+                children = Directory.EnumerateFileSystemEntries(current).ToList();
             }
-            catch (IOException)
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
                 continue;
             }
             foreach (var entry in children)
             {
                 var name = Path.GetFileName(entry);
-                if (Directory.Exists(entry))
+                if (FileWalk.IsDirectory(entry))
                 {
                     if (!Skip.Contains(name, StringComparer.OrdinalIgnoreCase))
                         pending.Push(entry);

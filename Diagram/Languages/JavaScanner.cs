@@ -104,7 +104,7 @@ public sealed class JavaScanner : ILanguageScanner
         {
             text = File.ReadAllText(file);
         }
-        catch (IOException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             yield break;
         }
@@ -131,10 +131,19 @@ public sealed class JavaScanner : ILanguageScanner
         while (pending.Count > 0)
         {
             var dir = pending.Pop();
-            foreach (var child in Directory.EnumerateFileSystemEntries(dir))
+            List<string> children;
+            try
+            {
+                children = Directory.EnumerateFileSystemEntries(dir).ToList();
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                continue;
+            }
+            foreach (var child in children)
             {
                 var name = Path.GetFileName(child);
-                if (Directory.Exists(child))
+                if (FileWalk.IsDirectory(child))
                 {
                     if (name is not ("target" or "build" or ".git" or "node_modules"))
                         pending.Push(child);

@@ -53,6 +53,56 @@ public static class DiagramPublisher
         }
     }
 
+    public static bool TestsAreNone(string projectFolder)
+    {
+        var recipe = ReadRecipe(projectFolder);
+        return recipe is not null && recipe.TryGetValue("tests", out var value) && value == "none";
+    }
+
+    public static void MarkTests(string projectFolder, bool none)
+    {
+        var path = RecipePath(projectFolder);
+        if (!File.Exists(path))
+            return;
+        var recipe = ReadRecipe(projectFolder);
+        if (recipe is null)
+            return;
+        if (none)
+        {
+            recipe.Remove("test");
+            recipe.Remove("coverageFile");
+            recipe["tests"] = "none";
+        }
+        else
+            recipe.Remove("tests");
+        WriteRecipeFile(path, recipe);
+    }
+
+    static Dictionary<string, string>? ReadRecipe(string projectFolder)
+    {
+        var path = RecipePath(projectFolder);
+        if (!File.Exists(path))
+            return null;
+        try
+        {
+            return JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(path));
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    static void WriteRecipeFile(string path, Dictionary<string, string> recipe)
+    {
+        var json = JsonSerializer.Serialize(recipe, new JsonSerializerOptions { WriteIndented = true });
+        if (File.Exists(path) && File.ReadAllText(path) == json)
+            return;
+        var temporary = path + ".tmp";
+        File.WriteAllText(temporary, json);
+        File.Move(temporary, path, overwrite: true);
+    }
+
     public static void WriteRecipe(string projectFolder, string testCommand, string scanCommand, string mutateCommand, string? coverageFile)
     {
         var directory = Path.Combine(projectFolder, FolderName);
