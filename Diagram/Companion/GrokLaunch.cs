@@ -9,7 +9,7 @@ public static class GrokLaunch
 {
     public const string WakeLine = "You have mail from the viewer. Read .pious/to-agent.json\r";
 
-    public const string Rules =
+    public static string Rules =>
         "You are the companion for the project in the working directory. " +
         "The first turn trusts the launch message. That message already says what is in .pious. Do not explore to confirm it. " +
         "If it says the test line and diagram.json are both present, stop without reading anything else. " +
@@ -41,7 +41,9 @@ public static class GrokLaunch
         "If test is still missing, set it to the one command that runs the tests you just wrote, including that runner's coverage flag. " +
         "Cover the methods the diagram lists. " +
         "Then run the scan command. Do not edit diagram.json. " +
-        "Run each command once. If the shell blocks it, run that same command the one way that shell allows. On Windows, PowerShell may block npm.ps1, so cmd can run the same npm or npx command. Do not change the runner and do not add flags beyond the coverage flag already stored. Say what you ran. " +
+        "Run each command once. If the shell blocks it, run that same command the one way that shell allows. " +
+        ShellNote +
+        "Do not change the runner and do not add flags beyond the coverage flag already stored. Say what you ran. " +
         "If the command fails because its coverage package is missing, install the normal one for that same runner and run the same command once more. Vitest and Angular use @vitest/coverage-v8 at the vitest version already in the repo. C# uses coverlet.collector on the test project when the error says the XPlat collector is missing. " +
         "If it still fails, quote the error and still run the scan once. Do not try another test runner, another coverage package, or a report the command did not write. " +
         "The scan command writes .pious/diagram.json. On the first turn, run it only when the launch message says the diagram is missing. After that, run it when a test command the user asked for succeeds, or when mail says refresh. " +
@@ -56,6 +58,10 @@ public static class GrokLaunch
         "diagram-updated means the picture changed. Read .pious/diagram.json and wait. " +
         "Opening a file or moving around the diagram is not mail. " +
         "Do not commit unless asked.";
+
+    static string ShellNote => OperatingSystem.IsWindows()
+        ? "On Windows, PowerShell may block npm.ps1, so cmd can run the same npm or npx command. "
+        : "Do not prefix the command with cmd. If ./gradlew is denied, run bash ./gradlew once. ";
 
     public const string LaunchPrompt =
         "You are already in the project folder. .pious/diagram.json and the test line are named below. Trust that. Do not search.";
@@ -109,9 +115,17 @@ public static class GrokLaunch
         var named = Environment.GetEnvironmentVariable("GROK_BIN");
         if (!string.IsNullOrWhiteSpace(named) && File.Exists(named))
             return named;
-        var home = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".grok", "bin", "grok.exe");
-        if (File.Exists(home))
-            return home;
+        var bin = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".grok", "bin");
+        foreach (var name in CandidateNames())
+        {
+            var home = Path.Combine(bin, name);
+            if (File.Exists(home))
+                return home;
+        }
         return "grok";
     }
+
+    static string[] CandidateNames() => OperatingSystem.IsWindows()
+        ? ["grok.exe", "grok"]
+        : ["grok", "grok.exe"];
 }

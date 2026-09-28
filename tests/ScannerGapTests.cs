@@ -85,7 +85,10 @@ public class ScannerGapTests
                 File.WriteAllText(Path.Combine(gradle, "gradlew"), "");
                 Assert.Equal("./gradlew test jacocoTestReport", scanner.TestCommand(gradle));
                 File.WriteAllText(Path.Combine(gradle, "gradlew.bat"), "");
-                Assert.Equal("gradlew.bat test jacocoTestReport", scanner.TestCommand(gradle));
+                var both = OperatingSystem.IsWindows()
+                    ? "gradlew.bat test jacocoTestReport"
+                    : "./gradlew test jacocoTestReport";
+                Assert.Equal(both, scanner.TestCommand(gradle));
             }
             finally
             {

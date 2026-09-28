@@ -33,7 +33,7 @@ public sealed class AngularScanner : ILanguageScanner
     }
 
     public string TestCommand(string folder) =>
-        "cmd /c npx ng test --watch=false --coverage --coverage-reporters=lcov";
+        "npx ng test --watch=false --coverage --coverage-reporters=lcov";
 
     public string MutateCommand(string folder) => "";
 

@@ -208,7 +208,7 @@
                 </Border>
                 <terminal:TerminalControl x:Name="Companion"
                                           Margin="14,8,4,8"
-                                          FontFamily="Cascadia Mono, Cascadia Code, Consolas, monospace"
+                                          FontFamily="Cascadia Mono, Cascadia Code, Consolas, Menlo, SF Mono, monospace"
                                           FontSize="13"
                                           Background="#0E1014"
                                           Foreground="#D5DBE6" />

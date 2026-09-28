@@ -1278,7 +1278,7 @@ public partial class MainWindow : Window
     static TextBlock Trimmed(string text, double size, string color, double width) => new()
     {
         Text = text,
-        FontFamily = new FontFamily("Cascadia Mono,Consolas,monospace"),
+        FontFamily = new FontFamily("Cascadia Mono, Cascadia Code, Consolas, Menlo, SF Mono, monospace"),
         FontSize = size,
         Foreground = new SolidColorBrush(Color.Parse(color)),
         TextWrapping = TextWrapping.NoWrap,
@@ -1323,7 +1323,7 @@ public partial class MainWindow : Window
         var grokMissing = grok == "grok" ? !ExistsOnPath("grok") : !File.Exists(grok);
         if (grokMissing)
         {
-            CompanionStatus.Text = "grok.exe was not found.";
+            CompanionStatus.Text = "The grok command was not found.";
             return;
         }
         if (Companion.IsLive)

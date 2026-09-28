@@ -15,11 +15,115 @@
 | Styles scan | none | In-app read of HTML and stylesheets on the Styles tab |
 | Java scan | none | Reads `.java` as text. No parser package. |
 
+## Installation Instructions
+
+The viewer needs the .NET 10 SDK. The companion needs the Grok CLI. Angular, React, Vue, and Svelte class scans need Node.js, plus the TypeScript package in `scanners/angular`. C# and Java class scans do not need Node. A Java folder you open still needs a JDK on `PATH`, and a Maven folder needs `mvn` unless that repo has `mvnw`.
+
+Start the viewer from a terminal where those commands already work. The window inherits that `PATH`, and so does the companion and the TypeScript scan. Open a new terminal after an installer changes `PATH`.
+
+`GROK_BIN` is optional. Set it to the full path of the `grok` binary only when that file is not in the default folder below. The app checks `GROK_BIN` first, then the default folder, then `grok` on `PATH`.
+
+### macOS
+
+Install the .NET 10 SDK for your Mac from [https://dotnet.microsoft.com/download/dotnet/10.0](https://dotnet.microsoft.com/download/dotnet/10.0). Use Arm64 when `uname -m` prints `arm64`. Use x64 when it prints `x86_64`. The package installer puts `dotnet` on `PATH`.
+
+If you use the install script instead, it lands in `~/.dotnet` and does not update your shell:
+
+```
+curl -fsSL https://dot.net/v1/dotnet-install.sh -o dotnet-install.sh
+chmod +x dotnet-install.sh
+./dotnet-install.sh --channel 10.0
+```
+
+Install the Grok CLI:
+
+```
+curl -fsSL https://x.ai/cli/install.sh | bash
+```
+
+That writes `~/.grok/bin/grok`. Install Node.js from [https://nodejs.org](https://nodejs.org), or with `brew install node`, so `node` and `npm` are on `PATH`. If you use nvm, the terminal you start the viewer from must already see `node`.
+
+Add this to `~/.zshrc` when `dotnet` or `grok` is not found in a new terminal. The script install of .NET needs the `DOTNET_ROOT` lines. The package install of .NET does not.
+
+```
+export DOTNET_ROOT="$HOME/.dotnet"
+export PATH="$DOTNET_ROOT:$HOME/.grok/bin:$PATH"
+```
+
+Open a new terminal, then check:
+
+```
+dotnet --version
+grok --version
+node --version
+npm --version
+```
+
+`dotnet --version` starts with `10.`. From the viewer repo, install the scan package and start the window:
+
+```
+npm install --prefix scanners/angular
+dotnet run
+```
+
+There is no double-clickable app. Clicking a file uses `open`. The terminal font falls back to Menlo.
+
+For a Java folder, `java -version` must work. Maven needs `mvn -version` unless the repo has `mvnw`. Gradle uses `./gradlew` in that repo. If the shell says permission denied, run `chmod +x gradlew` once in that repo. Remember project writes `~/Library/Application Support/pious-project-viewer/session.json`.
+
+Set a custom companion binary in `~/.zshrc` only when it is not `~/.grok/bin/grok`:
+
+```
+export GROK_BIN="$HOME/.grok/bin/grok"
+```
+
+### Windows
+
+In PowerShell:
+
+```
+winget install Microsoft.DotNet.SDK.10
+winget install OpenJS.NodeJS.LTS
+irm https://x.ai/cli/install.ps1 | iex
+```
+
+The .NET installer puts `dotnet` on `PATH`, usually from `C:\Program Files\dotnet`. The Node installer puts `node` and `npm` on `PATH`. The Grok installer writes `%USERPROFILE%\.grok\bin\grok.exe` and adds that folder to your user `PATH`.
+
+Open a new PowerShell window, then check:
+
+```
+dotnet --version
+grok --version
+node --version
+npm --version
+where.exe dotnet
+where.exe grok
+where.exe node
+```
+
+`dotnet --version` starts with `10.`. If `where.exe` misses one of them, add that program's folder to your user `PATH` and open another window.
+
+From the viewer repo:
+
+```
+npm install --prefix scanners/angular
+dotnet run
+```
+
+If PowerShell blocks `npm.ps1`, run the same `npm install --prefix scanners/angular` in `cmd`. The companion does the same for a later `npm` or `npx` test command: one run through `cmd`, same command.
+
+For a Java folder, `java -version` must work. Maven needs `mvn -version` unless the repo has `mvnw`. Gradle uses `gradlew.bat` in that repo. Remember project writes `%AppData%\pious-project-viewer\session.json`.
+
+Set a custom companion binary only when it is not `%USERPROFILE%\.grok\bin\grok.exe`. In PowerShell, then open a new window:
+
+```
+setx GROK_BIN "%USERPROFILE%\.grok\bin\grok.exe"
+```
+
 ## How it works
 
 You open a folder. The app does not scan it, write `.pious`, or start the companion. If `.pious/diagram.json` is already there, that picture opens. Language starts on Auto. Detection looks only at the opened folder.
 
-A recognized folder with no `.pious` yet offers **Generate project and start agent**. That writes `.pious/project.json` with the scan command and starts the companion. The app does not fill in the test command. The companion reads the one test script or build file at the project root and stores the command it finds.
+A recognized folder with no `.pious` yet offers **Generate project and start agent**. That writes `.pious/project.json` with the scan command and starts the companion. The scan command is this copy of the viewer, on the computer where you generated the project. Generate again if you move the folder to another computer. The app does not fill in the test command. The companion reads the one test script or build file at the project root and stores the command it finds.
 
 On that first turn the companion trusts what `.pious` already contains. If the test line and the diagram are both there, it stops. If the diagram is missing and a scan command is present, it runs that scan once. It does not run tests until you ask. The window reloads when `diagram.json` changes. Opening a different folder stops a companion that is still running.
 
@@ -35,7 +139,7 @@ Each case says what you do, what must already be on disk, and what the companion
 
 **Open a folder.** The app does not write `.pious`, does not scan, and does not start the companion. A diagram already in `.pious/diagram.json` is shown. Anything else stays on the empty screen.
 
-**Generate project and start agent.** The folder is recognized and `.pious` is missing. The app writes `.pious/project.json` with the scan command and starts the companion. The test line is left empty. The companion's first message says exactly what is already in `.pious`. If the test line and `diagram.json` are both there, it stops. If the test line is missing, it reads one root test script or build file and stores that command. If `diagram.json` is missing and a scan command is present, it runs that scan once. It does not run tests on that first turn.
+**Generate project and start agent.** The folder is recognized and `.pious` is missing. The app writes `.pious/project.json` with the scan command and starts the companion. The scan command is this copy of the viewer. A folder moved to another computer needs that line written again. The test line is left empty. The companion's first message says exactly what is already in `.pious`. If the test line and `diagram.json` are both there, it stops. If the test line is missing, it reads one root test script or build file and stores that command. If `diagram.json` is missing and a scan command is present, it runs that scan once. It does not run tests on that first turn.
 
 **Refresh diagram.** The companion is running and `.pious/project.json` has a scan command. The mail names the test command, when one is stored, and the scan command. The companion runs the test command, then the scan. The scan writes `.pious/diagram.json`. The window reloads that file. If there is no test command, it says so and scans only.
 
@@ -87,19 +191,19 @@ If the folder is not one of those three, Auto has nothing to scan. The companion
 
 ## Explanations
 
-Open the repo and run:
+Install for your system is in Installation Instructions. From the viewer repo, in a terminal where `dotnet` already works:
 
 ```
 dotnet run
 ```
 
-You need the .NET 10 SDK. The window is the program `PiousProjectViewer`.
+The window is the program `PiousProjectViewer`. Clicking a file opens it in the default app. On macOS that is `open`. On Linux it is `xdg-open`. The companion terminal uses Cascadia Mono on Windows and Menlo on macOS.
 
 **Look at this C# repo.** Open the folder, then **Generate project and start agent** if `.pious` is not there yet. The companion stores the test command the repo already uses. On refresh it adds `--collect:"XPlat Code Coverage"` only when that command does not already write `coverage.cobertura.xml`. The scan command rewrites `.pious/diagram.json`. A `.razor` file is a component on its code-behind, or its own box when there is no code-behind.
 
-**Look at an Angular app.** The opened folder needs `angular.json`, or a `package.json` that depends on `@angular/core`. The test line is the command that project's own test script runs. On refresh, `ng test` can gain `--coverage --coverage-reporters=lcov`. If the command is `npm test` and that script runs `ng test`, the stored line is `npm test -- --coverage --coverage-reporters=lcov`, when it does not already write `lcov.info`. That report needs `@vitest/coverage-v8` on current Angular. If PowerShell blocks `npm.ps1`, the companion runs the same command through `cmd`. React, Vue, and Svelte use the same picture. The opened folder's `package.json` picks the flavor. The Styles tab reads HTML, JSX `className`, and Vue or Svelte style blocks. It does not use the test command.
+**Look at an Angular app.** The opened folder needs `angular.json`, or a `package.json` that depends on `@angular/core`. The test line is the command that project's own test script runs. On refresh, `ng test` can gain `--coverage --coverage-reporters=lcov`. If the command is `npm test` and that script runs `ng test`, the stored line is `npm test -- --coverage --coverage-reporters=lcov`, when it does not already write `lcov.info`. That report needs `@vitest/coverage-v8` on current Angular. On Windows, if PowerShell blocks `npm.ps1`, the companion runs the same command through `cmd`. On macOS it runs that command in the normal shell and does not prefix it with `cmd`. React, Vue, and Svelte use the same picture. The opened folder's `package.json` picks the flavor. The Styles tab reads HTML, JSX `className`, and Vue or Svelte style blocks. It does not use the test command.
 
-**Look at a Java project.** The opened folder needs `pom.xml`, `build.gradle`, or `build.gradle.kts`. The test line is the command that build file already runs. On refresh, Maven keeps the same `mvn test` and adds the JaCoCo report. Gradle adds `jacocoTestReport`. CRAP reads `jacoco.xml`. That Gradle report is written only when the build already applies JaCoCo. If the build file names no test command, the test line stays empty. Interfaces and abstract classes count as abstract. Each file is read by its braces.
+**Look at a Java project.** The opened folder needs `pom.xml`, `build.gradle`, or `build.gradle.kts`. The test line is the command that build file already runs. On refresh, Maven keeps the same `mvn test` and adds the JaCoCo report. Gradle adds `jacocoTestReport`. CRAP reads `jacoco.xml`. That Gradle report is written only when the build already applies JaCoCo. If the build file names no test command, the test line stays empty. On macOS, if the stored command is `./gradlew` and the shell denies it, the companion runs `bash ./gradlew` once and leaves the stored command as it is. Interfaces and abstract classes count as abstract. Each file is read by its braces.
 
 **What you should expect.** `.pious/` is generated. It is gitignored here. A new project does not need a diagram, a coverage file, or a mutation report waiting on disk. A missing coverage report is treated as 0% covered. It is not a failure. Mutation numbers show up only when a `mutation-report.json` is already there. C# can run Stryker. Angular and Java have no mutate command.
 
@@ -107,7 +211,8 @@ You need the .NET 10 SDK. The window is the program `PiousProjectViewer`.
 
 ## Future Plans
 
-- macOS, then other desktops
+- A double-clickable macOS application bundle
+- Linux and other desktops
 - Companions other than the Grok CLI
 - More languages, on the same scan and test-command split
 - A real parser for Java, in place of the text scan

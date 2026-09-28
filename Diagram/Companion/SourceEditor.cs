@@ -11,7 +11,7 @@ public static class SourceEditor
     {
         try
         {
-            var start = new ProcessStartInfo { FileName = file, UseShellExecute = true };
+            var start = Launch(file);
             if (Launcher is not null)
                 Launcher(start);
             else
@@ -22,5 +22,22 @@ public static class SourceEditor
         {
             return "Could not open the file. " + ex.Message;
         }
+    }
+
+    internal static ProcessStartInfo Launch(string file)
+    {
+        if (OperatingSystem.IsMacOS())
+        {
+            var open = new ProcessStartInfo { FileName = "/usr/bin/open", UseShellExecute = false };
+            open.ArgumentList.Add(file);
+            return open;
+        }
+        if (OperatingSystem.IsLinux())
+        {
+            var open = new ProcessStartInfo { FileName = "xdg-open", UseShellExecute = false };
+            open.ArgumentList.Add(file);
+            return open;
+        }
+        return new ProcessStartInfo { FileName = file, UseShellExecute = true };
     }
 }

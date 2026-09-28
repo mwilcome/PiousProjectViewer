@@ -180,8 +180,23 @@ public class CoverageTests
         {
             var opened = SourceEditor.Open("C:\\demo\\Main.cs", 14);
             Assert.Contains("default app", opened);
-            Assert.Equal("C:\\demo\\Main.cs", captured!.FileName);
-            Assert.True(captured.UseShellExecute);
+            if (OperatingSystem.IsMacOS())
+            {
+                Assert.Equal("/usr/bin/open", captured!.FileName);
+                Assert.Equal("C:\\demo\\Main.cs", captured.ArgumentList[0]);
+                Assert.False(captured.UseShellExecute);
+            }
+            else if (OperatingSystem.IsLinux())
+            {
+                Assert.Equal("xdg-open", captured!.FileName);
+                Assert.Equal("C:\\demo\\Main.cs", captured.ArgumentList[0]);
+                Assert.False(captured.UseShellExecute);
+            }
+            else
+            {
+                Assert.Equal("C:\\demo\\Main.cs", captured!.FileName);
+                Assert.True(captured.UseShellExecute);
+            }
         }
         finally
         {

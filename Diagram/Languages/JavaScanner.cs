@@ -24,9 +24,16 @@ public sealed class JavaScanner : ILanguageScanner
     {
         if (File.Exists(Path.Combine(folder, "pom.xml")))
             return "mvn -q org.jacoco:jacoco-maven-plugin:0.8.13:prepare-agent test org.jacoco:jacoco-maven-plugin:0.8.13:report";
-        if (File.Exists(Path.Combine(folder, "gradlew.bat")))
-            return "gradlew.bat test jacocoTestReport";
-        if (File.Exists(Path.Combine(folder, "gradlew")))
+        var bat = File.Exists(Path.Combine(folder, "gradlew.bat"));
+        var unix = File.Exists(Path.Combine(folder, "gradlew"));
+        if (OperatingSystem.IsWindows())
+        {
+            if (bat)
+                return "gradlew.bat test jacocoTestReport";
+            if (unix)
+                return "./gradlew test jacocoTestReport";
+        }
+        else if (unix)
             return "./gradlew test jacocoTestReport";
         return "gradle test jacocoTestReport";
     }
